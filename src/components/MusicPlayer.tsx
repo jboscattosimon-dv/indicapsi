@@ -1,150 +1,102 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Play, Pause, SkipForward, SkipBack, Music2, ChevronUp, ChevronDown } from "lucide-react";
-import { MUSICAS } from "@/lib/types";
+import { useState } from "react";
+import { Music2, X, ChevronDown } from "lucide-react";
+
+const SPOTIFY_EMBED =
+  "https://open.spotify.com/embed/album/2ANVost0y2y52ema1E9xAZ?utm_source=generator&theme=0";
 
 export function MusicPlayer() {
-  const [playing, setPlaying] = useState(false);
-  const [current, setCurrent] = useState(0);
-  const [collapsed, setCollapsed] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (playing) {
-      intervalRef.current = setInterval(() => {
-        setProgress((p) => {
-          if (p >= 100) {
-            next();
-            return 0;
-          }
-          return p + 0.3;
-        });
-      }, 300);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [playing, current]);
-
-  const next = () => {
-    setCurrent((c) => (c + 1) % MUSICAS.length);
-    setProgress(0);
-  };
-  const prev = () => {
-    setCurrent((c) => (c - 1 + MUSICAS.length) % MUSICAS.length);
-    setProgress(0);
-  };
-
-  const musica = MUSICAS[current];
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   return (
-    <div
-      className={`
-        fixed bottom-6 right-6 z-50
-        glass rounded-2xl shadow-[0_8px_32px_rgba(107,76,59,0.12)]
-        transition-all duration-500 ease-out
-        ${collapsed ? "w-12 h-12" : "w-72"}
-      `}
-    >
-      {collapsed ? (
+    <>
+      {/* Botão flutuante */}
+      {!open && (
         <button
-          onClick={() => setCollapsed(false)}
-          className="w-12 h-12 flex items-center justify-center text-[#C4897A] hover:text-[#A96B5C] transition-colors"
-          aria-label="Abrir player"
+          onClick={() => setOpen(true)}
+          aria-label="Abrir playlist"
+          className="
+            fixed bottom-6 right-6 z-50
+            w-12 h-12 rounded-full
+            bg-[#4A3328] dark:bg-[#2C2320]
+            text-[#C4897A] hover:text-[#E8C4BB]
+            flex items-center justify-center
+            shadow-[0_4px_20px_rgba(107,76,59,0.3)]
+            hover:shadow-[0_6px_28px_rgba(196,137,122,0.35)]
+            hover:scale-105
+            transition-all duration-300
+          "
         >
           <Music2 size={18} strokeWidth={1.5} />
         </button>
-      ) : (
-        <div className="p-4">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Music2 size={14} strokeWidth={1.5} className="text-[#C4897A]" />
-              <span
-                className="text-xs tracking-widest uppercase text-[#9B9088] dark:text-[#9B9088]"
-                style={{ fontFamily: "var(--font-inter)", fontWeight: 400, letterSpacing: "0.12em" }}
-              >
-                ambiente
-              </span>
-            </div>
-            <button
-              onClick={() => setCollapsed(true)}
-              className="text-[#B5ABA3] hover:text-[#9B9088] transition-colors"
-              aria-label="Minimizar player"
-            >
-              <ChevronDown size={14} strokeWidth={1.5} />
-            </button>
-          </div>
-
-          {/* Song info */}
-          <div className="mb-3">
-            <p
-              className="text-sm text-[#4A3328] dark:text-[#E8DDD1] mb-0.5 truncate"
-              style={{ fontFamily: "var(--font-playfair)", fontWeight: 500 }}
-            >
-              {musica.emoji} {musica.titulo}
-            </p>
-            <p className="text-xs text-[#9B9088]" style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}>
-              {musica.artista} · {musica.duracao}
-            </p>
-          </div>
-
-          {/* Progress */}
-          <div className="progress-track mb-3">
-            <div className="progress-fill" style={{ width: `${progress}%` }} />
-          </div>
-
-          {/* Controls */}
-          <div className="flex items-center justify-center gap-4">
-            <button
-              onClick={prev}
-              className="text-[#B5ABA3] hover:text-[#C4897A] transition-colors"
-              aria-label="Música anterior"
-            >
-              <SkipBack size={16} strokeWidth={1.5} />
-            </button>
-            <button
-              onClick={() => setPlaying((p) => !p)}
-              className="
-                w-9 h-9 rounded-full flex items-center justify-center
-                bg-[#C4897A] hover:bg-[#A96B5C]
-                text-white transition-all duration-200 hover:scale-105
-              "
-              aria-label={playing ? "Pausar" : "Tocar"}
-            >
-              {playing
-                ? <Pause size={14} strokeWidth={2} />
-                : <Play size={14} strokeWidth={2} className="translate-x-0.5" />
-              }
-            </button>
-            <button
-              onClick={next}
-              className="text-[#B5ABA3] hover:text-[#C4897A] transition-colors"
-              aria-label="Próxima música"
-            >
-              <SkipForward size={16} strokeWidth={1.5} />
-            </button>
-          </div>
-
-          {/* Track dots */}
-          <div className="flex items-center justify-center gap-1.5 mt-3">
-            {MUSICAS.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => { setCurrent(i); setProgress(0); }}
-                className={`rounded-full transition-all duration-300 ${
-                  i === current
-                    ? "w-4 h-1 bg-[#C4897A]"
-                    : "w-1 h-1 bg-[#D9CEBF] dark:bg-[#3D302C]"
-                }`}
-                aria-label={`Música ${i + 1}`}
-              />
-            ))}
-          </div>
-        </div>
       )}
-    </div>
+
+      {/* Painel do Spotify */}
+      <div
+        className={`
+          fixed bottom-6 right-6 z-50
+          w-[340px] rounded-2xl overflow-hidden
+          shadow-[0_12px_48px_rgba(107,76,59,0.2)]
+          border border-[#3D302C]/40
+          transition-all duration-500 ease-out origin-bottom-right
+          ${open
+            ? "opacity-100 scale-100 translate-y-0"
+            : "opacity-0 scale-95 translate-y-4 pointer-events-none"
+          }
+        `}
+        style={{ background: "#121212" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+          <div className="flex items-center gap-2">
+            <Music2 size={13} strokeWidth={1.5} className="text-[#C4897A]" />
+            <span
+              className="text-xs text-white/50 uppercase tracking-widest"
+              style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.18em" }}
+            >
+              ambiente
+            </span>
+          </div>
+          <button
+            onClick={() => setOpen(false)}
+            className="text-white/30 hover:text-white/70 transition-colors p-0.5"
+            aria-label="Fechar playlist"
+          >
+            <X size={14} strokeWidth={1.5} />
+          </button>
+        </div>
+
+        {/* Spinner enquanto carrega */}
+        {!loaded && (
+          <div className="h-[152px] flex items-center justify-center">
+            <div
+              className="w-5 h-5 rounded-full border border-[#C4897A]/30 border-t-[#C4897A]"
+              style={{ animation: "spin 1s linear infinite" }}
+            />
+          </div>
+        )}
+
+        {/* Spotify embed */}
+        <iframe
+          src={SPOTIFY_EMBED}
+          width="100%"
+          height="152"
+          frameBorder="0"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          loading="lazy"
+          onLoad={() => setLoaded(true)}
+          className={loaded ? "block" : "hidden"}
+          title="Playlist ambiente — Indicapsi"
+        />
+      </div>
+
+      <style jsx global>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </>
   );
 }
