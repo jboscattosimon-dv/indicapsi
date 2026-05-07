@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Download, Printer, ArrowLeft, Edit3, Save, X } from "lucide-react";
+import { ArrowLeft, Download, Printer, Edit3, Save, X } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PERGUNTAS } from "@/lib/types";
 
 interface ProntuarioData {
   id: string;
   nome: string;
+  paciente_nome?: string;
   idade: string;
   motivo: string;
   momento_perdida: string;
@@ -22,108 +23,150 @@ interface ProntuarioData {
   status: string;
 }
 
-const CAMPO_MAP: Record<string, string> = {
-  motivo: "motivo",
-  momento_perdida: "momento_perdida",
-  relacao_consigo: "relacao_consigo",
-  vive_outros: "vive_outros",
-  ocupa_mente: "ocupa_mente",
-  como_corpo: "como_corpo",
-  recuperar: "recuperar",
-};
+function getNome(d: ProntuarioData) {
+  return d.nome || d.paciente_nome || "—";
+}
+
+function formatDataLonga(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+function formatDataCurta(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
 export default function ProntuarioViewPage() {
-  const params = useParams();
-  const router = useRouter();
-  const id = params.id as string;
-  const printRef = useRef<HTMLDivElement>(null);
+  const params  = useParams();
+  const router  = useRouter();
+  const id      = params.id as string;
+  const docRef  = useRef<HTMLDivElement>(null);
 
-  const [dados, setDados] = useState<ProntuarioData | null>(null);
-  const [editando, setEditando] = useState(false);
-  const [editForm, setEditForm] = useState<ProntuarioData | null>(null);
-  const [exportando, setExportando] = useState(false);
-  const [show, setShow] = useState(false);
+  const [dados,     setDados]     = useState<ProntuarioData | null>(null);
+  const [editando,  setEditando]  = useState(false);
+  const [editForm,  setEditForm]  = useState<ProntuarioData | null>(null);
+  const [exportando,setExportando]= useState(false);
+  const [show,      setShow]      = useState(false);
 
   useEffect(() => {
-    const historico: ProntuarioData[] = JSON.parse(
-      localStorage.getItem("indicapsi-historico") || "[]"
-    );
-    const pron = historico.find((p) => p.id === id);
-    if (pron) {
-      setDados(pron);
-      setEditForm(pron);
-    }
-    setTimeout(() => setShow(true), 100);
+    const hist: ProntuarioData[] = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
+    const pron = hist.find(p => p.id === id);
+    if (pron) { setDados(pron); setEditForm(pron); }
+    setTimeout(() => setShow(true), 120);
   }, [id]);
 
-  const salvarEdicao = () => {
+  const salvar = () => {
     if (!editForm) return;
-    const historico: ProntuarioData[] = JSON.parse(
-      localStorage.getItem("indicapsi-historico") || "[]"
-    );
-    const idx = historico.findIndex((p) => p.id === id);
-    if (idx !== -1) {
-      historico[idx] = { ...editForm, status: "completo" };
-      localStorage.setItem("indicapsi-historico", JSON.stringify(historico));
-    }
+    const hist: ProntuarioData[] = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
+    const i = hist.findIndex(p => p.id === id);
+    if (i !== -1) { hist[i] = editForm; localStorage.setItem("indicapsi-historico", JSON.stringify(hist)); }
     setDados(editForm);
     setEditando(false);
   };
 
+  const cancelar = () => { setEditForm(dados); setEditando(false); };
+
+  /* ── PDF com jsPDF nativo (texto, não screenshot) ── */
   const exportarPDF = async () => {
+    if (!dados) return;
     setExportando(true);
     try {
       const { default: jsPDF } = await import("jspdf");
-      const { default: html2canvas } = await import("html2canvas");
+      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+      const W = 210, ML = 20, MR = 20, MT = 24, colW = W - ML - MR;
+      let y = MT;
+      const nome = getNome(dados);
 
-      if (!printRef.current) return;
+      const linha = (cor = "#EDE6DC") => {
+        pdf.setDrawColor(cor); pdf.setLineWidth(0.3);
+        pdf.line(ML, y, W - MR, y); y += 6;
+      };
 
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,
-        backgroundColor: "#FAF9F7",
-        useCORS: true,
-        logging: false,
+      const novaPage = () => { pdf.addPage(); y = MT; };
+
+      const checkPage = (need: number) => { if (y + need > 272) novaPage(); };
+
+      /* cabeçalho */
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7); pdf.setTextColor("#B5ABA3");
+      pdf.text("INDICAPSI  ·  PRONTUÁRIO TERAPÊUTICO", ML, y);
+      pdf.text(formatDataCurta(dados.criado_em), W - MR, y, { align: "right" });
+      y += 6;
+      linha("#D9CEBF");
+
+      /* nome */
+      y += 4;
+      pdf.setFontSize(28); pdf.setTextColor("#4A3328");
+      pdf.setFont("times", "italic");
+      pdf.text(nome, ML, y);
+      y += 10;
+
+      /* identificação */
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8); pdf.setTextColor("#9B9088");
+      pdf.text("NOME", ML, y);
+      pdf.text("IDADE", ML + 80, y);
+      pdf.text("DATA DO PREENCHIMENTO", ML + 130, y);
+      y += 5;
+      pdf.setFontSize(10); pdf.setTextColor("#4A3328");
+      pdf.text(nome, ML, y);
+      pdf.text(dados.idade ? `${dados.idade} anos` : "—", ML + 80, y);
+      pdf.text(formatDataLonga(dados.criado_em), ML + 130, y);
+      y += 10;
+      linha("#EDE6DC");
+
+      /* perguntas */
+      const pergsComEscrita = [
+        ...PERGUNTAS.map(p => ({ pergunta: p.pergunta, resposta: dados[p.id as keyof ProntuarioData] as string || "" })),
+        { pergunta: "Escrita livre", resposta: dados.escrita_livre || "" },
+      ];
+
+      pergsComEscrita.forEach((item, i) => {
+        checkPage(24);
+        y += 4;
+
+        /* número */
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7); pdf.setTextColor("#C4897A");
+        const num = i < PERGUNTAS.length ? String(i + 1).padStart(2, "0") : "✦";
+        pdf.text(num, ML, y);
+
+        /* linha decorativa */
+        pdf.setDrawColor("#EDE6DC"); pdf.setLineWidth(0.2);
+        pdf.line(ML + 7, y - 1, W - MR, y - 1);
+        y += 6;
+
+        /* pergunta */
+        pdf.setFont("times", "italic");
+        pdf.setFontSize(11); pdf.setTextColor("#6B4C3B");
+        const pergWrapped = pdf.splitTextToSize(item.pergunta, colW);
+        checkPage(pergWrapped.length * 5 + 8);
+        pdf.text(pergWrapped, ML, y);
+        y += pergWrapped.length * 5.5 + 4;
+
+        /* resposta */
+        const resp = item.resposta.trim() || "Não respondida.";
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9.5); pdf.setTextColor("#4A3328");
+        const respWrapped = pdf.splitTextToSize(resp, colW);
+        respWrapped.forEach((linha: string) => {
+          checkPage(6);
+          pdf.text(linha, ML, y);
+          y += 5.5;
+        });
+        y += 4;
       });
 
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW - 20;
-      const imgH = (canvas.height * imgW) / canvas.width;
-
-      let y = 10;
-      let remainH = imgH;
-      let srcY = 0;
-
-      while (remainH > 0) {
-        const sliceH = Math.min(pageH - 20, remainH);
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = (sliceH / imgW) * canvas.width;
-
-        const ctx = sliceCanvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(
-            canvas,
-            0, srcY * (canvas.width / imgW),
-            canvas.width, sliceCanvas.height,
-            0, 0,
-            canvas.width, sliceCanvas.height
-          );
-          pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", 10, y, imgW, sliceH);
-        }
-
-        remainH -= sliceH;
-        srcY += sliceH;
-
-        if (remainH > 0) {
-          pdf.addPage();
-          y = 10;
-        }
+      /* rodapé de cada página */
+      const total = pdf.getNumberOfPages();
+      for (let pg = 1; pg <= total; pg++) {
+        pdf.setPage(pg);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7); pdf.setTextColor("#CEC8C2");
+        pdf.text("indicapsi — documento confidencial", ML, 288);
+        pdf.text(`${pg} / ${total}`, W - MR, 288, { align: "right" });
       }
 
-      pdf.save(`prontuario_${dados?.nome?.replace(/\s+/g, "_") || "paciente"}_${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.pdf`);
+      pdf.save(`prontuario_${nome.replace(/\s+/g, "_")}_${formatDataCurta(dados.criado_em).replace(/\//g, "-")}.pdf`);
     } catch (e) {
       console.error(e);
     } finally {
@@ -131,87 +174,66 @@ export default function ProntuarioViewPage() {
     }
   };
 
-  const imprimir = () => window.print();
-
-  const formatarData = (iso: string) => {
-    return new Date(iso).toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-  };
-
-  if (!dados) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAF9F7] dark:bg-[#1A1614]">
-        <div
-          className="w-8 h-8 rounded-full border border-[#C4897A] flex items-center justify-center"
-          style={{ animation: "breathe 2s ease-in-out infinite" }}
-        >
-          <div className="w-2 h-2 rounded-full bg-[#C4897A]" />
-        </div>
+  if (!dados) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF9F7" }}>
+      <div style={{ width: 36, height: 36, borderRadius: "50%", border: "1.5px solid #C4897A", display: "flex", alignItems: "center", justifyContent: "center", animation: "breathe 2s ease-in-out infinite" }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#C4897A" }} />
       </div>
-    );
-  }
+    </div>
+  );
+
+  const nome = getNome(dados);
 
   return (
-    <div className="min-h-screen bg-[#FAF9F7] dark:bg-[#1A1614]">
-      {/* Toolbar no-print */}
-      <div className="no-print sticky top-0 z-50 border-b border-[#EDE6DC] dark:border-[#2C2320] glass">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="flex items-center gap-2 text-sm text-[#9B9088] hover:text-[#C4897A] transition-colors"
-            style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-          >
+    <div style={{ minHeight: "100vh", background: "var(--pv-bg)" }}>
+      <style>{`
+        :root { --pv-bg:#F5F1EC; --pv-surface:#FDFCFA; --pv-border:#E8DDD1; --pv-fg:#4A3328; --pv-muted:#9B9088; --pv-pale:#B5ABA3; --pv-rose:#C4897A; --pv-doc:#FFFFFF; }
+        .dark { --pv-bg:#161210; --pv-surface:#1E1814; --pv-border:#2C2320; --pv-fg:#E8DDD1; --pv-muted:#7A6E6A; --pv-pale:#5A4E4A; --pv-rose:#C4897A; --pv-doc:#1A1614; }
+        .pv-toolbar { position:sticky; top:0; z-index:50; background:var(--pv-surface); border-bottom:1.5px solid var(--pv-border); }
+        .pv-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; border:none; cursor:pointer; font-size:0.78rem; font-family:Inter,system-ui,sans-serif; font-weight:400; transition:all 0.18s; }
+        .pv-btn-ghost { background:transparent; color:var(--pv-muted); }
+        .pv-btn-ghost:hover { background:var(--pv-bg); color:var(--pv-fg); }
+        .pv-btn-outline { background:transparent; border:1.5px solid var(--pv-border) !important; color:var(--pv-muted); }
+        .pv-btn-outline:hover { border-color:var(--pv-rose) !important; color:var(--pv-rose); }
+        .pv-btn-rose { background:#C4897A; color:#fff; }
+        .pv-btn-rose:hover { background:#A96B5C; }
+        .pv-btn-dark { background:var(--pv-fg); color:var(--pv-surface); }
+        .pv-btn-dark:hover { opacity:0.85; }
+        .pv-btn-dark:disabled { opacity:0.5; cursor:not-allowed; }
+        .pv-edit-area { width:100%; background:transparent; border:none; border-bottom:1.5px solid var(--pv-rose); color:var(--pv-fg); font-family:Inter,system-ui,sans-serif; font-size:0.95rem; font-weight:300; line-height:1.85; padding:8px 0; resize:none; outline:none; }
+        @media print {
+          .pv-toolbar { display:none !important; }
+          .pv-doc { box-shadow:none !important; border:none !important; }
+        }
+      `}</style>
+
+      {/* ── TOOLBAR ── */}
+      <div className="pv-toolbar no-print">
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "12px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <button className="pv-btn pv-btn-ghost" onClick={() => router.push("/dashboard")} style={{ paddingLeft: 0 }}>
             <ArrowLeft size={15} strokeWidth={1.5} />
-            painel
+            <span>Painel</span>
           </button>
 
-          <div className="flex items-center gap-3">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {editando ? (
               <>
-                <button
-                  onClick={() => setEditando(false)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs text-[#9B9088] hover:text-[#4A3328] transition-colors border border-[#EDE6DC] dark:border-[#3D302C]"
-                  style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-                >
-                  <X size={13} strokeWidth={2} />
-                  cancelar
+                <button className="pv-btn pv-btn-outline" onClick={cancelar}>
+                  <X size={13} strokeWidth={1.5} /> cancelar
                 </button>
-                <button
-                  onClick={salvarEdicao}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs bg-[#C4897A] text-white hover:bg-[#A96B5C] transition-colors"
-                  style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-                >
-                  <Save size={13} strokeWidth={2} />
-                  salvar
+                <button className="pv-btn pv-btn-rose" onClick={salvar}>
+                  <Save size={13} strokeWidth={1.5} /> salvar
                 </button>
               </>
             ) : (
               <>
-                <button
-                  onClick={() => setEditando(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs text-[#9B9088] hover:text-[#4A3328] dark:hover:text-[#E8DDD1] transition-colors"
-                  style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-                >
-                  <Edit3 size={13} strokeWidth={1.5} />
-                  editar
+                <button className="pv-btn pv-btn-ghost" onClick={() => setEditando(true)}>
+                  <Edit3 size={13} strokeWidth={1.5} /> editar
                 </button>
-                <button
-                  onClick={imprimir}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs text-[#9B9088] hover:text-[#4A3328] dark:hover:text-[#E8DDD1] transition-colors"
-                  style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-                >
-                  <Printer size={13} strokeWidth={1.5} />
-                  imprimir
+                <button className="pv-btn pv-btn-ghost" onClick={() => window.print()}>
+                  <Printer size={13} strokeWidth={1.5} /> imprimir
                 </button>
-                <button
-                  onClick={exportarPDF}
-                  disabled={exportando}
-                  className="flex items-center gap-1.5 px-5 py-2 rounded-full text-xs bg-[#4A3328] dark:bg-[#C4897A] text-white hover:bg-[#6B4C3B] dark:hover:bg-[#A96B5C] transition-colors disabled:opacity-60"
-                  style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-                >
+                <button className="pv-btn pv-btn-dark" onClick={exportarPDF} disabled={exportando}>
                   <Download size={13} strokeWidth={1.5} />
                   {exportando ? "gerando..." : "exportar PDF"}
                 </button>
@@ -222,221 +244,156 @@ export default function ProntuarioViewPage() {
         </div>
       </div>
 
-      {/* Documento */}
-      <div
-        ref={printRef}
-        className="max-w-3xl mx-auto px-6 sm:px-12 py-16"
-        style={{
-          opacity: show ? 1 : 0,
-          transform: show ? "translateY(0)" : "translateY(16px)",
-          transition: "opacity 0.7s ease, transform 0.7s ease",
-        }}
-      >
-        {/* Cabeçalho do documento */}
-        <div className="mb-14 pb-10 border-b border-[#EDE6DC] dark:border-[#2C2320]">
-          <div className="flex items-start justify-between mb-8">
-            <div>
-              <p
-                className="text-xs uppercase tracking-widest text-[#B5ABA3] mb-2"
-                style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.2em" }}
-              >
-                prontuário terapêutico
-              </p>
-              <h1
-                className="text-4xl sm:text-5xl text-[#4A3328] dark:text-[#E8DDD1] leading-tight"
-                style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
-              >
-                {dados.nome}
-              </h1>
-            </div>
-            <div className="text-right">
-              <div className="w-2 h-2 rounded-full bg-[#C4897A] ml-auto mb-2" />
-              <p
-                className="text-xs text-[#B5ABA3]"
-                style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-              >
-                {formatarData(dados.criado_em)}
-              </p>
-            </div>
-          </div>
+      {/* ── DOCUMENTO ── */}
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "48px 28px 80px" }}>
+        <div
+          ref={docRef}
+          className="pv-doc"
+          style={{
+            background: "var(--pv-doc)",
+            borderRadius: 20,
+            border: "1.5px solid var(--pv-border)",
+            boxShadow: "0 8px 48px rgba(107,76,59,0.08)",
+            overflow: "hidden",
+            opacity: show ? 1 : 0,
+            transform: show ? "translateY(0)" : "translateY(20px)",
+            transition: "opacity 0.6s ease, transform 0.6s ease",
+          }}
+        >
+          {/* ── CAPA DO DOCUMENTO ── */}
+          <div style={{ background: "#4A3328", padding: "52px 56px 44px", position: "relative", overflow: "hidden" }}>
+            {/* Orbs decorativos no header */}
+            <div style={{ position: "absolute", top: -60, right: -60, width: 240, height: 240, borderRadius: "50%", background: "rgba(196,137,122,0.15)", filter: "blur(40px)" }} />
+            <div style={{ position: "absolute", bottom: -40, left: 0, width: 180, height: 180, borderRadius: "50%", background: "rgba(232,196,187,0.08)", filter: "blur(30px)" }} />
 
-          {/* Identificação */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <p
-                className="text-xs uppercase tracking-widest text-[#CEC8C2] mb-1"
-                style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.14em" }}
-              >
-                nome
-              </p>
-              <p
-                className="text-[#4A3328] dark:text-[#E8DDD1]"
-                style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
-              >
-                {dados.nome}
-              </p>
-            </div>
-            <div>
-              <p
-                className="text-xs uppercase tracking-widest text-[#CEC8C2] mb-1"
-                style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.14em" }}
-              >
-                idade
-              </p>
-              <p
-                className="text-[#4A3328] dark:text-[#E8DDD1]"
-                style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
-              >
-                {dados.idade} anos
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Questões terapêuticas */}
-        <div className="space-y-14">
-          {PERGUNTAS.map((p, i) => {
-            const campo = p.id as keyof typeof dados;
-            const resposta = editando && editForm
-              ? (editForm[campo as keyof ProntuarioData] as string)
-              : (dados[campo as keyof ProntuarioData] as string);
-
-            return (
-              <div key={p.id}>
-                {/* Número + separador */}
-                <div className="flex items-center gap-4 mb-4">
-                  <span
-                    className="text-xs tabular-nums text-[#C4897A]"
-                    style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-                  >
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <div className="flex-1 h-px bg-[#EDE6DC] dark:bg-[#2C2320]" />
-                </div>
-
-                <h3
-                  className="text-lg text-[#6B4C3B] dark:text-[#C4897A] mb-4 italic"
-                  style={{ fontFamily: "var(--font-playfair)", fontWeight: 400 }}
-                >
-                  {p.pergunta}
-                </h3>
-
-                {editando && editForm ? (
-                  <textarea
-                    value={editForm[campo as keyof ProntuarioData] as string}
-                    onChange={(e) =>
-                      setEditForm((f) => f ? { ...f, [campo]: e.target.value } : f)
-                    }
-                    rows={4}
-                    className="
-                      w-full bg-transparent border-b border-[#C4897A]
-                      text-[#4A3328] dark:text-[#E8DDD1]
-                      py-2 leading-relaxed transition-colors
-                    "
-                    style={{
-                      fontFamily: "var(--font-inter)",
-                      fontWeight: 300,
-                      fontSize: "0.95rem",
-                      lineHeight: "1.85",
-                    }}
-                  />
-                ) : (
-                  <p
-                    className="text-[#4A3328] dark:text-[#CEC8C2] leading-relaxed whitespace-pre-wrap"
-                    style={{
-                      fontFamily: "var(--font-inter)",
-                      fontWeight: 300,
-                      fontSize: "0.95rem",
-                      lineHeight: "1.85",
-                    }}
-                  >
-                    {resposta || (
-                      <span className="text-[#CEC8C2] italic" style={{ fontFamily: "var(--font-playfair)" }}>
-                        não respondida
-                      </span>
-                    )}
+            <div style={{ position: "relative" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 36 }}>
+                <div>
+                  <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.65rem", letterSpacing: "0.26em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>
+                    prontuário terapêutico
                   </p>
-                )}
+                  <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(2rem, 5vw, 3.2rem)", color: "#FAF9F7", lineHeight: 1.15, marginBottom: 0 }}>
+                    {nome}
+                  </h1>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 24 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#C4897A", marginLeft: "auto", marginBottom: 8 }} />
+                  <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.75rem", color: "rgba(255,255,255,0.45)", lineHeight: 1.6 }}>
+                    {formatDataLonga(dados.criado_em)}
+                  </p>
+                </div>
               </div>
-            );
-          })}
 
-          {/* Escrita livre */}
-          <div>
-            <div className="flex items-center gap-4 mb-4">
-              <span
-                className="text-xs text-[#C4897A]"
-                style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-              >
-                ✦
-              </span>
-              <div className="flex-1 h-px bg-[#EDE6DC] dark:bg-[#2C2320]" />
+              {/* Chips de info */}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <InfoChip label="Nome" valor={nome} />
+                {dados.idade && <InfoChip label="Idade" valor={`${dados.idade} anos`} />}
+                <InfoChip label="Status" valor="Completo" destaque />
+              </div>
+            </div>
+          </div>
+
+          {/* ── CORPO DO DOCUMENTO ── */}
+          <div style={{ padding: "52px 56px" }}>
+
+            {/* Perguntas */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {PERGUNTAS.map((p, i) => {
+                const campo = p.id as keyof ProntuarioData;
+                const resposta = (editando && editForm ? editForm[campo] : dados[campo]) as string;
+                return (
+                  <QuestaoBlock
+                    key={p.id}
+                    numero={String(i + 1).padStart(2, "0")}
+                    pergunta={p.pergunta}
+                    resposta={resposta}
+                    editando={editando}
+                    onChange={v => setEditForm(f => f ? { ...f, [campo]: v } : f)}
+                    ultimo={false}
+                  />
+                );
+              })}
+
+              {/* Escrita livre */}
+              <QuestaoBlock
+                numero="✦"
+                pergunta="Escrita livre"
+                resposta={(editando && editForm ? editForm.escrita_livre : dados.escrita_livre) || ""}
+                editando={editando}
+                onChange={v => setEditForm(f => f ? { ...f, escrita_livre: v } : f)}
+                ultimo
+                rows={10}
+              />
             </div>
 
-            <h3
-              className="text-lg text-[#6B4C3B] dark:text-[#C4897A] mb-4 italic"
-              style={{ fontFamily: "var(--font-playfair)", fontWeight: 400 }}
-            >
-              Escrita livre
-            </h3>
-
-            {editando && editForm ? (
-              <textarea
-                value={editForm.escrita_livre}
-                onChange={(e) =>
-                  setEditForm((f) => f ? { ...f, escrita_livre: e.target.value } : f)
-                }
-                rows={8}
-                className="
-                  w-full bg-transparent border-b border-[#C4897A]
-                  text-[#4A3328] dark:text-[#E8DDD1]
-                  py-2 leading-relaxed
-                "
-                style={{
-                  fontFamily: "var(--font-inter)",
-                  fontWeight: 300,
-                  fontSize: "0.95rem",
-                  lineHeight: "1.85",
-                }}
-              />
-            ) : (
-              <p
-                className="text-[#4A3328] dark:text-[#CEC8C2] leading-relaxed whitespace-pre-wrap"
-                style={{
-                  fontFamily: "var(--font-inter)",
-                  fontWeight: 300,
-                  fontSize: "0.95rem",
-                  lineHeight: "1.85",
-                }}
-              >
-                {dados.escrita_livre || (
-                  <span className="text-[#CEC8C2] italic" style={{ fontFamily: "var(--font-playfair)" }}>
-                    não preenchida
-                  </span>
-                )}
+            {/* Rodapé do documento */}
+            <div style={{ marginTop: 64, paddingTop: 24, borderTop: "1px solid var(--pv-border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "0.78rem", color: "var(--pv-pale)" }}>
+                indicapsi — prontuário terapêutico digital
               </p>
-            )}
-          </div>
-        </div>
-
-        {/* Rodapé do documento */}
-        <div className="mt-20 pt-8 border-t border-[#EDE6DC] dark:border-[#2C2320]">
-          <div className="flex items-center justify-between">
-            <p
-              className="text-xs text-[#CEC8C2] italic"
-              style={{ fontFamily: "var(--font-playfair)", fontWeight: 400 }}
-            >
-              indicapsi — prontuário terapêutico digital
-            </p>
-            <p
-              className="text-xs text-[#CEC8C2]"
-              style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-            >
-              documento confidencial
-            </p>
+              <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.72rem", color: "var(--pv-pale)", letterSpacing: "0.1em" }}>
+                documento confidencial
+              </p>
+            </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── SUB-COMPONENTES ── */
+
+function InfoChip({ label, valor, destaque = false }: { label: string; valor: string; destaque?: boolean }) {
+  return (
+    <div style={{ padding: "6px 14px", borderRadius: 999, background: destaque ? "rgba(196,137,122,0.25)" : "rgba(255,255,255,0.07)", border: `1px solid ${destaque ? "rgba(196,137,122,0.4)" : "rgba(255,255,255,0.1)"}` }}>
+      <span style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.68rem", letterSpacing: "0.12em", textTransform: "uppercase", color: destaque ? "#C4897A" : "rgba(255,255,255,0.4)", marginRight: 6 }}>
+        {label}
+      </span>
+      <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontSize: "0.85rem", color: destaque ? "#E8C4BB" : "rgba(255,255,255,0.75)" }}>
+        {valor}
+      </span>
+    </div>
+  );
+}
+
+function QuestaoBlock({ numero, pergunta, resposta, editando, onChange, ultimo, rows = 5 }: {
+  numero: string; pergunta: string; resposta: string;
+  editando: boolean; onChange: (v: string) => void;
+  ultimo: boolean; rows?: number;
+}) {
+  return (
+    <div style={{ paddingBottom: 44, marginBottom: 44, borderBottom: ultimo ? "none" : "1px solid var(--pv-border)" }}>
+      {/* Número + linha */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <span style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.72rem", color: "#C4897A", letterSpacing: "0.1em", minWidth: 20 }}>
+          {numero}
+        </span>
+        <div style={{ flex: 1, height: 1, background: "var(--pv-border)" }} />
+      </div>
+
+      {/* Pergunta */}
+      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "1.1rem", color: "#C4897A", marginBottom: 16, lineHeight: 1.4 }}>
+        {pergunta}
+      </h3>
+
+      {/* Resposta ou textarea */}
+      {editando ? (
+        <textarea
+          className="pv-edit-area"
+          value={resposta}
+          onChange={e => onChange(e.target.value)}
+          rows={rows}
+        />
+      ) : (
+        <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.96rem", color: "var(--pv-fg)", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>
+          {resposta?.trim() || (
+            <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", color: "var(--pv-pale)" }}>
+              não respondida
+            </span>
+          )}
+        </p>
+      )}
     </div>
   );
 }
