@@ -6,6 +6,7 @@ import { ChevronRight, ChevronLeft, ArrowRight, Check } from "lucide-react";
 import { MusicPlayer } from "@/components/MusicPlayer";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PERGUNTAS, type ProntuarioForm } from "@/lib/types";
+import { salvarProntuario } from "@/lib/supabase";
 
 const ETAPAS_TOTAL = PERGUNTAS.length + 3; // intro + nome/idade + 7 perguntas + escrita livre + final
 
@@ -127,16 +128,36 @@ export default function ProntuarioPage() {
     const id = `pron_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const dados = {
       id,
-      ...form,
-      criado_em: new Date().toISOString(),
-      status: "completo",
+      paciente_nome: form.nome,
+      idade:            form.idade,
+      motivo:           form.motivo,
+      momento_perdida:  form.momento_perdida,
+      relacao_consigo:  form.relacao_consigo,
+      vive_outros:      form.vive_outros,
+      ocupa_mente:      form.ocupa_mente,
+      como_corpo:       form.como_corpo,
+      recuperar:        form.recuperar,
+      escrita_livre:    form.escrita_livre,
+      criado_em:        new Date().toISOString(),
+      status:           "completo",
     };
 
-    // Salvar localmente
+    // Salvar localmente (sempre funciona, mesmo sem banco)
+    const local = {
+      ...dados,
+      nome: form.nome,
+    };
     const historico = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
-    historico.unshift(dados);
+    historico.unshift(local);
     localStorage.setItem("indicapsi-historico", JSON.stringify(historico));
     localStorage.removeItem("indicapsi-draft");
+
+    // Salvar no Supabase (silencioso em caso de erro)
+    try {
+      await salvarProntuario(dados);
+    } catch (e) {
+      console.warn("Supabase offline, salvo apenas localmente:", e);
+    }
 
     setProntuarioId(id);
 

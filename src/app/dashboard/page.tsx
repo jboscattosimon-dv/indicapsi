@@ -2,16 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, FileText, Download, Trash2, LogOut, Plus, Calendar, Clock } from "lucide-react";
+import { Search, FileText, Trash2, LogOut, Plus, Calendar, Clock } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { listarProntuarios, deletarProntuario as deletarSupabase } from "@/lib/supabase";
 
 interface ProntuarioItem {
   id: string;
   nome: string;
+  paciente_nome?: string;
   idade: string;
   criado_em: string;
   status: string;
   motivo: string;
+}
+
+function getNome(p: ProntuarioItem) {
+  return p.nome || p.paciente_nome || "—";
 }
 
 export default function DashboardPage() {
@@ -21,23 +27,45 @@ export default function DashboardPage() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    // Verificar auth básica
     const auth = localStorage.getItem("indicapsi-auth");
     if (!auth) { router.push("/login"); return; }
 
-    const historico = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
-    setProntuarios(historico);
+    // Carregar localStorage primeiro (resposta imediata)
+    const local: ProntuarioItem[] = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
+    setProntuarios(local);
+
+    // Depois busca do Supabase e mescla
+    listarProntuarios()
+      .then((remoto) => {
+        if (!remoto?.length) return;
+        const remotoParsed: ProntuarioItem[] = remoto.map((r) => ({
+          id:         r.id,
+          nome:       r.paciente_nome,
+          paciente_nome: r.paciente_nome,
+          idade:      r.idade ?? "",
+          criado_em:  r.criado_em ?? new Date().toISOString(),
+          status:     r.status ?? "completo",
+          motivo:     r.motivo ?? "",
+        }));
+        // Mescla: remoto tem precedência, local adiciona os que não estão no remoto
+        const ids = new Set(remotoParsed.map((r) => r.id));
+        const soLocal = local.filter((l) => !ids.has(l.id));
+        setProntuarios([...remotoParsed, ...soLocal]);
+      })
+      .catch(() => {/* Supabase indisponível, usa apenas local */});
+
     setTimeout(() => setShow(true), 100);
   }, [router]);
 
   const filtrados = prontuarios.filter((p) =>
-    p.nome.toLowerCase().includes(busca.toLowerCase())
+    getNome(p).toLowerCase().includes(busca.toLowerCase())
   );
 
-  const deletar = (id: string) => {
+  const deletar = async (id: string) => {
     const novo = prontuarios.filter((p) => p.id !== id);
     setProntuarios(novo);
     localStorage.setItem("indicapsi-historico", JSON.stringify(novo));
+    try { await deletarSupabase(id); } catch {}
   };
 
   const sair = () => {
@@ -242,7 +270,7 @@ export default function DashboardPage() {
                           className="text-sm text-[#C4897A]"
                           style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic" }}
                         >
-                          {p.nome.charAt(0)}
+                          {getNome(p).charAt(0)}
                         </span>
                       </div>
 
@@ -253,7 +281,7 @@ export default function DashboardPage() {
                             className="text-[#4A3328] dark:text-[#E8DDD1] truncate"
                             style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 500 }}
                           >
-                            {p.nome}
+                            {getNome(p)}
                           </p>
                           {p.idade && (
                             <span
