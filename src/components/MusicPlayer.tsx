@@ -1,94 +1,69 @@
 "use client";
 
 import { useState } from "react";
-import { Music2, X, ChevronDown } from "lucide-react";
+import { Music2, X } from "lucide-react";
 
-const SPOTIFY_EMBED =
-  "https://open.spotify.com/embed/album/2ANVost0y2y52ema1E9xAZ?utm_source=generator&theme=0";
+const ALBUM_ID = "2ANVost0y2y52ema1E9xAZ";
 
 export function MusicPlayer() {
   const [open, setOpen] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
   return (
     <>
       {/* Botão flutuante */}
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          aria-label="Abrir playlist"
-          className="
-            fixed bottom-6 right-6 z-50
-            w-12 h-12 rounded-full
-            bg-[#4A3328] dark:bg-[#2C2320]
-            text-[#C4897A] hover:text-[#E8C4BB]
-            flex items-center justify-center
-            shadow-[0_4px_20px_rgba(107,76,59,0.3)]
-            hover:shadow-[0_6px_28px_rgba(196,137,122,0.35)]
-            hover:scale-105
-            transition-all duration-300
-          "
-        >
-          <Music2 size={18} strokeWidth={1.5} />
-        </button>
-      )}
-
-      {/* Painel do Spotify */}
-      <div
-        className={`
-          fixed bottom-6 right-6 z-50
-          w-[340px] rounded-2xl overflow-hidden
-          shadow-[0_12px_48px_rgba(107,76,59,0.2)]
-          border border-[#3D302C]/40
-          transition-all duration-500 ease-out origin-bottom-right
-          ${open
-            ? "opacity-100 scale-100 translate-y-0"
-            : "opacity-0 scale-95 translate-y-4 pointer-events-none"
-          }
-        `}
-        style={{ background: "#121212" }}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label={open ? "Fechar playlist" : "Abrir playlist"}
+        style={{
+          position: "fixed",
+          bottom: "24px",
+          right: "24px",
+          zIndex: 50,
+          width: "44px",
+          height: "44px",
+          borderRadius: "50%",
+          background: open ? "#C4897A" : "#2C1F1A",
+          color: open ? "#fff" : "#C4897A",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: "none",
+          cursor: "pointer",
+          boxShadow: "0 4px 24px rgba(107,76,59,0.3)",
+          transition: "all 0.2s ease",
+        }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-          <div className="flex items-center gap-2">
-            <Music2 size={13} strokeWidth={1.5} className="text-[#C4897A]" />
-            <span
-              className="text-xs text-white/50 uppercase tracking-widest"
-              style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.18em" }}
-            >
-              ambiente
-            </span>
-          </div>
-          <button
-            onClick={() => setOpen(false)}
-            className="text-white/30 hover:text-white/70 transition-colors p-0.5"
-            aria-label="Fechar playlist"
-          >
-            <X size={14} strokeWidth={1.5} />
-          </button>
-        </div>
+        {open ? <X size={16} /> : <Music2 size={17} strokeWidth={1.5} />}
+      </button>
 
-        {/* Spinner enquanto carrega */}
-        {!loaded && (
-          <div className="h-[152px] flex items-center justify-center">
-            <div className="w-5 h-5 rounded-full border border-[#C4897A]/30 border-t-[#C4897A] animate-spin-slow" />
-          </div>
-        )}
-
-        {/* Spotify embed */}
+      {/* Painel Spotify */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: "80px",
+          right: "24px",
+          zIndex: 49,
+          width: "320px",
+          borderRadius: "16px",
+          overflow: "hidden",
+          boxShadow: "0 12px 48px rgba(0,0,0,0.35)",
+          opacity: open ? 1 : 0,
+          transform: open ? "translateY(0) scale(1)" : "translateY(12px) scale(0.97)",
+          pointerEvents: open ? "auto" : "none",
+          transition: "opacity 0.3s ease, transform 0.3s ease",
+        }}
+      >
         <iframe
-          src={SPOTIFY_EMBED}
-          width="100%"
-          height="152"
+          src={`https://open.spotify.com/embed/album/${ALBUM_ID}?utm_source=generator&theme=0`}
+          width="320"
+          height="352"
           frameBorder="0"
           allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
           loading="lazy"
-          onLoad={() => setLoaded(true)}
-          className={loaded ? "block" : "hidden"}
-          title="Playlist ambiente — Indicapsi"
+          title="Playlist terapêutica"
+          style={{ display: "block", border: "none" }}
         />
       </div>
-
     </>
   );
 }

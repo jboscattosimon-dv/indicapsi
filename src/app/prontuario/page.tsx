@@ -8,17 +8,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { PERGUNTAS, type ProntuarioForm } from "@/lib/types";
 import { salvarProntuario } from "@/lib/supabase";
 
-const ETAPAS_TOTAL = PERGUNTAS.length + 3; // intro + nome/idade + 7 perguntas + escrita livre + final
+type Etapa = "intro" | "identificacao" | "pergunta" | "escrita_livre" | "finalizando" | "concluido";
 
-type Etapa =
-  | "intro"
-  | "identificacao"
-  | "pergunta"
-  | "escrita_livre"
-  | "finalizando"
-  | "concluido";
-
-const MENSAGENS_ENTRE = [
+const MENSAGENS = [
   "Obrigada por confiar.",
   "Você está no lugar certo.",
   "Respire. Continue no seu tempo.",
@@ -28,232 +20,199 @@ const MENSAGENS_ENTRE = [
   "Estou aqui, ouvindo.",
 ];
 
-function getMensagem(idx: number) {
-  return MENSAGENS_ENTRE[idx % MENSAGENS_ENTRE.length];
-}
-
-const formInicial: ProntuarioForm = {
-  nome: "",
-  idade: "",
-  motivo: "",
-  momento_perdida: "",
-  relacao_consigo: "",
-  vive_outros: "",
-  ocupa_mente: "",
-  como_corpo: "",
-  recuperar: "",
-  escrita_livre: "",
+const VAZIO: ProntuarioForm = {
+  nome: "", idade: "", motivo: "", momento_perdida: "", relacao_consigo: "",
+  vive_outros: "", ocupa_mente: "", como_corpo: "", recuperar: "", escrita_livre: "",
 };
 
 export default function ProntuarioPage() {
   const router = useRouter();
   const [etapa, setEtapa] = useState<Etapa>("intro");
   const [perguntaIdx, setPerguntaIdx] = useState(0);
-  const [form, setForm] = useState<ProntuarioForm>(formInicial);
+  const [form, setForm] = useState<ProntuarioForm>(VAZIO);
   const [animando, setAnimando] = useState(false);
-  const [animDir, setAnimDir] = useState<"in" | "out">("in");
+  const [animDir, setAnimDir] = useState<"out" | "in">("in");
   const [salvandoAuto, setSalvandoAuto] = useState(false);
   const [prontuarioId, setProntuarioId] = useState<string | null>(null);
 
-  // Salvar localmente a cada mudança
+  useEffect(() => {
+    const draft = localStorage.getItem("indicapsi-draft");
+    if (draft) { try { setForm(JSON.parse(draft)); } catch {} }
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("indicapsi-draft", JSON.stringify(form));
     setSalvandoAuto(true);
-    const t = setTimeout(() => setSalvandoAuto(false), 1200);
+    const t = setTimeout(() => setSalvandoAuto(false), 1000);
     return () => clearTimeout(t);
   }, [form]);
 
-  // Carregar rascunho ao montar
-  useEffect(() => {
-    const draft = localStorage.getItem("indicapsi-draft");
-    if (draft) {
-      try { setForm(JSON.parse(draft)); } catch {}
-    }
-  }, []);
-
-  const progresso = () => {
+  const pct = () => {
     if (etapa === "intro") return 0;
-    if (etapa === "identificacao") return 10;
+    if (etapa === "identificacao") return 8;
     if (etapa === "pergunta") return 15 + (perguntaIdx / PERGUNTAS.length) * 65;
     if (etapa === "escrita_livre") return 85;
-    if (etapa === "finalizando" || etapa === "concluido") return 100;
-    return 0;
+    return 100;
   };
 
-  const transicionar = useCallback((fn: () => void) => {
+  const ir = useCallback((fn: () => void) => {
     setAnimDir("out");
     setAnimando(true);
     setTimeout(() => {
       fn();
       setAnimDir("in");
-      setTimeout(() => setAnimando(false), 50);
-    }, 350);
+      setAnimando(false);
+    }, 280);
   }, []);
 
   const avancar = () => {
-    if (etapa === "intro") {
-      transicionar(() => setEtapa("identificacao"));
-    } else if (etapa === "identificacao") {
-      if (!form.nome.trim()) return;
-      transicionar(() => { setEtapa("pergunta"); setPerguntaIdx(0); });
-    } else if (etapa === "pergunta") {
-      if (perguntaIdx < PERGUNTAS.length - 1) {
-        transicionar(() => setPerguntaIdx((i) => i + 1));
-      } else {
-        transicionar(() => setEtapa("escrita_livre"));
-      }
+    if (etapa === "intro") ir(() => setEtapa("identificacao"));
+    else if (etapa === "identificacao" && form.nome.trim()) ir(() => { setEtapa("pergunta"); setPerguntaIdx(0); });
+    else if (etapa === "pergunta") {
+      if (perguntaIdx < PERGUNTAS.length - 1) ir(() => setPerguntaIdx(i => i + 1));
+      else ir(() => setEtapa("escrita_livre"));
     } else if (etapa === "escrita_livre") {
-      transicionar(() => setEtapa("finalizando"));
-      setTimeout(() => {
-        gerarProntuario();
-      }, 600);
+      ir(() => setEtapa("finalizando"));
+      setTimeout(finalizar, 400);
     }
   };
 
   const voltar = () => {
-    if (etapa === "identificacao") {
-      transicionar(() => setEtapa("intro"));
-    } else if (etapa === "pergunta") {
-      if (perguntaIdx > 0) {
-        transicionar(() => setPerguntaIdx((i) => i - 1));
-      } else {
-        transicionar(() => setEtapa("identificacao"));
-      }
-    } else if (etapa === "escrita_livre") {
-      transicionar(() => { setEtapa("pergunta"); setPerguntaIdx(PERGUNTAS.length - 1); });
-    }
+    if (etapa === "identificacao") ir(() => setEtapa("intro"));
+    else if (etapa === "pergunta") {
+      if (perguntaIdx > 0) ir(() => setPerguntaIdx(i => i - 1));
+      else ir(() => setEtapa("identificacao"));
+    } else if (etapa === "escrita_livre") ir(() => { setEtapa("pergunta"); setPerguntaIdx(PERGUNTAS.length - 1); });
   };
 
-  const gerarProntuario = async () => {
-    const id = `pron_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const finalizar = async () => {
+    const id = `pron_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const dados = {
-      id,
-      paciente_nome: form.nome,
-      idade:            form.idade,
-      motivo:           form.motivo,
-      momento_perdida:  form.momento_perdida,
-      relacao_consigo:  form.relacao_consigo,
-      vive_outros:      form.vive_outros,
-      ocupa_mente:      form.ocupa_mente,
-      como_corpo:       form.como_corpo,
-      recuperar:        form.recuperar,
-      escrita_livre:    form.escrita_livre,
-      criado_em:        new Date().toISOString(),
-      status:           "completo",
+      id, paciente_nome: form.nome, idade: form.idade, motivo: form.motivo,
+      momento_perdida: form.momento_perdida, relacao_consigo: form.relacao_consigo,
+      vive_outros: form.vive_outros, ocupa_mente: form.ocupa_mente,
+      como_corpo: form.como_corpo, recuperar: form.recuperar,
+      escrita_livre: form.escrita_livre, criado_em: new Date().toISOString(), status: "completo",
     };
-
-    // Salvar localmente (sempre funciona, mesmo sem banco)
-    const local = {
-      ...dados,
-      nome: form.nome,
-    };
-    const historico = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
-    historico.unshift(local);
-    localStorage.setItem("indicapsi-historico", JSON.stringify(historico));
+    const hist = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
+    hist.unshift({ ...dados, nome: form.nome });
+    localStorage.setItem("indicapsi-historico", JSON.stringify(hist));
     localStorage.removeItem("indicapsi-draft");
-
-    // Salvar no Supabase (silencioso em caso de erro)
-    try {
-      await salvarProntuario(dados);
-    } catch (e) {
-      console.warn("Supabase offline, salvo apenas localmente:", e);
-    }
-
+    try { await salvarProntuario(dados); } catch {}
     setProntuarioId(id);
-
-    setTimeout(() => {
-      setEtapa("concluido");
-    }, 2000);
+    setTimeout(() => setEtapa("concluido"), 1800);
   };
 
-  const verProntuario = () => {
-    if (prontuarioId) {
-      router.push(`/prontuario/${prontuarioId}`);
-    }
-  };
-
-  const animStyle = {
+  const animStyle: React.CSSProperties = {
     opacity: animando ? 0 : 1,
-    transform: animando
-      ? animDir === "out" ? "translateY(16px)" : "translateY(-16px)"
-      : "translateY(0)",
-    transition: "opacity 0.35s ease, transform 0.35s ease",
+    transform: animando ? (animDir === "out" ? "translateY(14px)" : "translateY(-14px)") : "translateY(0)",
+    transition: "opacity 0.28s ease, transform 0.28s ease",
   };
 
   return (
-    <main className="relative min-h-screen flex flex-col bg-[#FAF9F7] dark:bg-[#1A1614]">
-      {/* Orb sutil */}
-      <div
-        className="pointer-events-none fixed top-0 right-0 w-[300px] h-[300px] opacity-10 dark:opacity-5"
-        style={{
-          background: "radial-gradient(circle, #E8C4BB 0%, transparent 70%)",
-          filter: "blur(60px)",
-        }}
-      />
+    <main style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", position: "relative" }}>
+      <style>{`
+        :root { --bg: #FAF9F7; --fg: #4A3328; --muted: #9B9088; --border: #EDE6DC; --rose: #C4897A; --rose-deep: #A96B5C; --cream: #F0EBE3; }
+        .dark { --bg: #1A1614; --fg: #E8DDD1; --muted: #9B9088; --border: #2C2320; --cream: #231C1A; }
+        .pron-input {
+          width: 100%; background: transparent;
+          border: none; border-bottom: 1.5px solid #D9CEBF;
+          color: var(--fg); padding: 12px 0; font-size: 1.15rem;
+          font-family: 'Playfair Display', Georgia, serif; font-style: italic;
+          transition: border-color 0.2s;
+        }
+        .pron-input::placeholder { color: #CEC8C2; }
+        .pron-input:focus { outline: none; border-color: #C4897A; }
+        .dark .pron-input { border-color: #3D302C; }
+        .dark .pron-input:focus { border-color: #C4897A; }
+        .pron-textarea {
+          width: 100%; background: transparent;
+          border: 1.5px solid #EDE6DC; border-radius: 14px;
+          color: var(--fg); padding: 18px 20px;
+          font-size: 0.96rem; font-family: 'Inter', system-ui, sans-serif;
+          font-weight: 300; line-height: 1.9; resize: none;
+          transition: border-color 0.2s;
+        }
+        .pron-textarea::placeholder { color: #CEC8C2; }
+        .pron-textarea:focus { outline: none; border-color: #C4897A; }
+        .dark .pron-textarea { border-color: #2C2320; }
+        .dark .pron-textarea:focus { border-color: #C4897A; }
+        .btn-primary {
+          display: inline-flex; align-items: center; gap: 10px;
+          padding: 14px 32px; border-radius: 999px; border: none; cursor: pointer;
+          background: #4A3328; color: #FAF9F7;
+          font-family: 'Inter', system-ui, sans-serif; font-size: 0.875rem;
+          font-weight: 400; letter-spacing: 0.06em;
+          transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+        }
+        .dark .btn-primary { background: #C4897A; color: #fff; }
+        .btn-primary:hover { background: #6B4C3B; transform: translateY(-1px); box-shadow: 0 8px 28px rgba(196,137,122,0.28); }
+        .dark .btn-primary:hover { background: #A96B5C; }
+        .btn-rose {
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 12px 28px; border-radius: 999px; border: none; cursor: pointer;
+          background: #C4897A; color: #fff;
+          font-family: 'Inter', system-ui, sans-serif; font-size: 0.875rem;
+          font-weight: 400; transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+        }
+        .btn-rose:hover { background: #A96B5C; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(196,137,122,0.3); }
+        .btn-rose:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-ghost {
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer;
+          background: transparent; color: #B5ABA3;
+          font-family: 'Inter', system-ui, sans-serif; font-size: 0.875rem;
+          font-weight: 300; transition: color 0.2s;
+        }
+        .btn-ghost:hover { color: var(--fg); }
+        .label-sm {
+          display: block; font-family: 'Inter', system-ui, sans-serif;
+          font-size: 0.68rem; font-weight: 300; color: #B5ABA3;
+          text-transform: uppercase; letter-spacing: 0.18em; margin-bottom: 12px;
+        }
+      `}</style>
+
+      {/* Orb */}
+      <div style={{ position: "fixed", top: 0, right: 0, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, #E8C4BB 0%, transparent 70%)", filter: "blur(70px)", opacity: 0.12, pointerEvents: "none" }} />
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-5 border-b border-[#EDE6DC] dark:border-[#2C2320]">
-        <button
-          onClick={() => router.push("/")}
-          className="text-sm text-[#9B9088] hover:text-[#C4897A] transition-colors"
-          style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.12em" }}
-        >
+      <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px", borderBottom: "1px solid var(--border)", position: "relative", zIndex: 10 }}>
+        <button onClick={() => router.push("/")} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9088", fontSize: "0.875rem", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300 }}>
           ← indicapsi
         </button>
-
-        <div className="flex items-center gap-4">
-          {/* Salvamento automático */}
-          <span
-            className="text-xs transition-all duration-500"
-            style={{
-              fontFamily: "var(--font-inter)",
-              fontWeight: 300,
-              color: salvandoAuto ? "#C4897A" : "#CEC8C2",
-            }}
-          >
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: "0.72rem", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, color: salvandoAuto ? "#C4897A" : "#CEC8C2", transition: "color 0.4s" }}>
             {salvandoAuto ? "salvando..." : "salvo"}
           </span>
           <ThemeToggle />
         </div>
       </nav>
 
-      {/* Barra de progresso */}
-      <div className="progress-track w-full">
-        <div className="progress-fill" style={{ width: `${progresso()}%` }} />
+      {/* Progresso */}
+      <div style={{ height: 2, background: "rgba(196,137,122,0.12)", position: "relative" }}>
+        <div style={{ height: "100%", width: `${pct()}%`, background: "linear-gradient(90deg, #C4897A, #A96B5C)", borderRadius: 1, transition: "width 0.6s cubic-bezier(.4,0,.2,1)" }} />
       </div>
 
-      {/* Conteúdo principal */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-        <div
-          className="w-full max-w-xl"
-          style={animStyle}
-        >
-          {etapa === "intro" && <EtapaIntro onAvancar={avancar} />}
-          {etapa === "identificacao" && (
-            <EtapaIdentificacao form={form} setForm={setForm} onAvancar={avancar} onVoltar={voltar} />
-          )}
-          {etapa === "pergunta" && (
+      {/* Conteúdo */}
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 24px" }}>
+        <div style={{ width: "100%", maxWidth: 560, ...animStyle }}>
+          {etapa === "intro"         && <EtapaIntro onAvancar={avancar} />}
+          {etapa === "identificacao" && <EtapaIdentificacao form={form} setForm={setForm} onAvancar={avancar} onVoltar={voltar} />}
+          {etapa === "pergunta"      && (
             <EtapaPergunta
               pergunta={PERGUNTAS[perguntaIdx]}
               idx={perguntaIdx}
               total={PERGUNTAS.length}
               value={form[PERGUNTAS[perguntaIdx].id as keyof ProntuarioForm]}
-              onChange={(v) => setForm((f) => ({ ...f, [PERGUNTAS[perguntaIdx].id]: v }))}
+              onChange={v => setForm(f => ({ ...f, [PERGUNTAS[perguntaIdx].id]: v }))}
               onAvancar={avancar}
               onVoltar={voltar}
-              mensagem={getMensagem(perguntaIdx)}
+              mensagem={MENSAGENS[perguntaIdx % MENSAGENS.length]}
             />
           )}
-          {etapa === "escrita_livre" && (
-            <EtapaEscritaLivre
-              value={form.escrita_livre}
-              onChange={(v) => setForm((f) => ({ ...f, escrita_livre: v }))}
-              onAvancar={avancar}
-              onVoltar={voltar}
-            />
-          )}
-          {etapa === "finalizando" && <EtapaFinalizando />}
-          {etapa === "concluido" && <EtapaConcluido nome={form.nome} onVer={verProntuario} />}
+          {etapa === "escrita_livre" && <EtapaEscritaLivre value={form.escrita_livre} onChange={v => setForm(f => ({ ...f, escrita_livre: v }))} onAvancar={avancar} onVoltar={voltar} />}
+          {etapa === "finalizando"   && <EtapaFinalizando />}
+          {etapa === "concluido"     && <EtapaConcluido nome={form.nome} onVer={() => prontuarioId && router.push(`/prontuario/${prontuarioId}`)} />}
         </div>
       </div>
 
@@ -262,53 +221,32 @@ export default function ProntuarioPage() {
   );
 }
 
-/* ────── SUB-COMPONENTES ────── */
+/* ─── ETAPAS ─── */
+
+function Divisor() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
+      <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#C4897A" }} />
+      <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+    </div>
+  );
+}
 
 function EtapaIntro({ onAvancar }: { onAvancar: () => void }) {
   return (
-    <div className="text-center">
-      <div className="flex items-center justify-center gap-3 mb-8">
-        <div className="h-px w-8 bg-[#D9CEBF] dark:bg-[#3D302C]" />
-        <div className="w-1 h-1 rounded-full bg-[#C4897A]" />
-        <div className="h-px w-8 bg-[#D9CEBF] dark:bg-[#3D302C]" />
-      </div>
-
-      <p
-        className="text-xs uppercase tracking-widest text-[#B5ABA3] mb-6"
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.2em" }}
-      >
-        prontuário inicial
-      </p>
-
-      <h2
-        className="text-3xl sm:text-4xl text-[#4A3328] dark:text-[#E8DDD1] mb-5 leading-snug"
-        style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
-      >
-        Antes de começarmos,
-        <br />
-        quero te conhecer.
+    <div style={{ textAlign: "center" }}>
+      <Divisor />
+      <p className="label-sm" style={{ marginBottom: 24 }}>prontuário inicial</p>
+      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.8rem, 4vw, 2.6rem)", color: "var(--fg)", lineHeight: 1.25, marginBottom: 20 }}>
+        Antes de começarmos,<br />quero te conhecer.
       </h2>
-
-      <p
-        className="text-[#9B9088] dark:text-[#9B9088] mb-12 leading-relaxed max-w-sm mx-auto"
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 300, fontSize: "0.95rem" }}
-      >
-        Este não é um formulário. É um espaço de escuta.
-        Responda no seu tempo, com suas palavras.
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.95rem", color: "var(--muted)", lineHeight: 1.8, maxWidth: 380, margin: "0 auto 48px" }}>
+        Este não é um formulário. É um espaço de escuta.<br />
+        Responda no seu tempo, com suas palavras.<br />
         Não há resposta certa.
       </p>
-
-      <button
-        onClick={onAvancar}
-        className="
-          inline-flex items-center gap-3 px-8 py-3.5 rounded-full
-          bg-[#4A3328] dark:bg-[#C4897A] text-[#FAF9F7] dark:text-white
-          text-sm hover:bg-[#6B4C3B] dark:hover:bg-[#A96B5C]
-          transition-all duration-300 hover:shadow-[0_8px_24px_rgba(196,137,122,0.25)]
-          hover:-translate-y-0.5
-        "
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 400, letterSpacing: "0.08em" }}
-      >
+      <button className="btn-primary" onClick={onAvancar}>
         Estou pronta
         <ArrowRight size={15} strokeWidth={1.5} />
       </button>
@@ -316,12 +254,7 @@ function EtapaIntro({ onAvancar }: { onAvancar: () => void }) {
   );
 }
 
-function EtapaIdentificacao({
-  form,
-  setForm,
-  onAvancar,
-  onVoltar,
-}: {
+function EtapaIdentificacao({ form, setForm, onAvancar, onVoltar }: {
   form: ProntuarioForm;
   setForm: React.Dispatch<React.SetStateAction<ProntuarioForm>>;
   onAvancar: () => void;
@@ -329,184 +262,80 @@ function EtapaIdentificacao({
 }) {
   return (
     <div>
-      <p
-        className="text-xs uppercase tracking-widest text-[#B5ABA3] mb-8 text-center"
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.2em" }}
-      >
-        para começar
-      </p>
-
-      <div className="space-y-8">
-        <div className="group">
-          <label
-            className="block text-xs uppercase tracking-widest text-[#B5ABA3] mb-3"
-            style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.16em" }}
-          >
-            como você se chama?
-          </label>
+      <p className="label-sm" style={{ textAlign: "center", marginBottom: 40 }}>para começar</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
+        <div>
+          <label className="label-sm">como você se chama?</label>
           <input
+            className="pron-input"
             type="text"
             value={form.nome}
-            onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
             placeholder="Seu nome..."
             autoFocus
-            className="
-              w-full bg-transparent border-b border-[#D9CEBF] dark:border-[#3D302C]
-              focus:border-[#C4897A] dark:focus:border-[#C4897A]
-              text-[#4A3328] dark:text-[#E8DDD1] placeholder-[#CEC8C2] dark:placeholder-[#4A3328]
-              py-3 text-lg transition-colors duration-200
-            "
-            style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
-            onKeyDown={(e) => e.key === "Enter" && form.nome && onAvancar()}
+            onKeyDown={e => e.key === "Enter" && form.nome && onAvancar()}
           />
         </div>
-
-        <div className="group">
-          <label
-            className="block text-xs uppercase tracking-widest text-[#B5ABA3] mb-3"
-            style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.16em" }}
-          >
-            quantos anos você tem?
-          </label>
+        <div>
+          <label className="label-sm">quantos anos você tem?</label>
           <input
+            className="pron-input"
             type="text"
             inputMode="numeric"
             value={form.idade}
-            onChange={(e) => setForm((f) => ({ ...f, idade: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, idade: e.target.value }))}
             placeholder="Sua idade..."
-            className="
-              w-full bg-transparent border-b border-[#D9CEBF] dark:border-[#3D302C]
-              focus:border-[#C4897A] dark:focus:border-[#C4897A]
-              text-[#4A3328] dark:text-[#E8DDD1] placeholder-[#CEC8C2] dark:placeholder-[#4A3328]
-              py-3 text-lg transition-colors duration-200
-            "
-            style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
           />
         </div>
       </div>
-
-      <div className="flex items-center justify-between mt-12">
-        <button
-          onClick={onVoltar}
-          className="flex items-center gap-2 text-sm text-[#B5ABA3] hover:text-[#9B9088] transition-colors"
-          style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-        >
-          <ChevronLeft size={16} strokeWidth={1.5} />
-          voltar
-        </button>
-        <button
-          onClick={onAvancar}
-          disabled={!form.nome.trim()}
-          className="
-            flex items-center gap-2 px-6 py-3 rounded-full text-sm
-            bg-[#C4897A] text-white hover:bg-[#A96B5C]
-            disabled:opacity-30 disabled:cursor-not-allowed
-            transition-all duration-200 hover:shadow-[0_4px_16px_rgba(196,137,122,0.3)]
-          "
-          style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-        >
-          continuar
-          <ChevronRight size={16} strokeWidth={1.5} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 52 }}>
+        <button className="btn-ghost" onClick={onVoltar}><ChevronLeft size={16} strokeWidth={1.5} />voltar</button>
+        <button className="btn-rose" onClick={onAvancar} disabled={!form.nome.trim()}>
+          continuar <ChevronRight size={16} strokeWidth={1.5} />
         </button>
       </div>
     </div>
   );
 }
 
-function EtapaPergunta({
-  pergunta,
-  idx,
-  total,
-  value,
-  onChange,
-  onAvancar,
-  onVoltar,
-  mensagem,
-}: {
-  pergunta: (typeof PERGUNTAS)[0];
-  idx: number;
-  total: number;
-  value: string;
-  onChange: (v: string) => void;
-  onAvancar: () => void;
-  onVoltar: () => void;
-  mensagem: string;
+function EtapaPergunta({ pergunta, idx, total, value, onChange, onAvancar, onVoltar, mensagem }: {
+  pergunta: (typeof PERGUNTAS)[0]; idx: number; total: number; value: string;
+  onChange: (v: string) => void; onAvancar: () => void; onVoltar: () => void; mensagem: string;
 }) {
   return (
     <div>
-      {/* Contador */}
-      <div className="flex items-center gap-3 mb-8">
-        <span
-          className="text-xs text-[#B5ABA3] tabular-nums"
-          style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-        >
+      {/* Contador + mensagem */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 36 }}>
+        <span style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.75rem", color: "#B5ABA3", fontVariantNumeric: "tabular-nums" }}>
           {String(idx + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
         </span>
-        <div className="flex-1 h-px bg-[#EDE6DC] dark:bg-[#2C2320]" />
-        <span
-          className="text-xs italic text-[#C4897A]"
-          style={{ fontFamily: "var(--font-playfair)", fontWeight: 400 }}
-        >
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontSize: "0.82rem", color: "#C4897A" }}>
           {mensagem}
         </span>
       </div>
 
       {/* Pergunta */}
-      <h2
-        className="text-2xl sm:text-3xl text-[#4A3328] dark:text-[#E8DDD1] mb-4 leading-snug"
-        style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
-      >
+      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.5rem, 3.5vw, 2.1rem)", color: "var(--fg)", lineHeight: 1.3, marginBottom: 8 }}>
         {pergunta.pergunta}
       </h2>
-
-      <p
-        className="text-xs text-[#B5ABA3] mb-6"
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-      >
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.78rem", color: "#B5ABA3", marginBottom: 24 }}>
         {pergunta.hint}
       </p>
 
-      {/* Área de texto */}
+      {/* Textarea */}
       <textarea
+        className="pron-textarea"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={e => onChange(e.target.value)}
         placeholder={pergunta.placeholder}
-        rows={6}
+        rows={7}
         autoFocus
-        className="
-          w-full bg-transparent border border-[#EDE6DC] dark:border-[#2C2320]
-          focus:border-[#C4897A] dark:focus:border-[#C4897A]
-          rounded-xl p-5 text-[#4A3328] dark:text-[#E8DDD1]
-          placeholder-[#CEC8C2] dark:placeholder-[#3D302C]
-          leading-relaxed transition-colors duration-200
-          hover:border-[#D9CEBF] dark:hover:border-[#3D302C]
-        "
-        style={{
-          fontFamily: "var(--font-inter)",
-          fontWeight: 300,
-          fontSize: "0.95rem",
-          lineHeight: "1.85",
-        }}
       />
 
-      <div className="flex items-center justify-between mt-8">
-        <button
-          onClick={onVoltar}
-          className="flex items-center gap-2 text-sm text-[#B5ABA3] hover:text-[#9B9088] transition-colors"
-          style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-        >
-          <ChevronLeft size={16} strokeWidth={1.5} />
-          voltar
-        </button>
-        <button
-          onClick={onAvancar}
-          className="
-            flex items-center gap-2 px-6 py-3 rounded-full text-sm
-            bg-[#C4897A] text-white hover:bg-[#A96B5C]
-            transition-all duration-200 hover:shadow-[0_4px_16px_rgba(196,137,122,0.3)]
-          "
-          style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-        >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 32 }}>
+        <button className="btn-ghost" onClick={onVoltar}><ChevronLeft size={16} strokeWidth={1.5} />voltar</button>
+        <button className="btn-rose" onClick={onAvancar}>
           {idx === total - 1 ? "última parte" : "próxima"}
           <ChevronRight size={16} strokeWidth={1.5} />
         </button>
@@ -515,84 +344,30 @@ function EtapaPergunta({
   );
 }
 
-function EtapaEscritaLivre({
-  value,
-  onChange,
-  onAvancar,
-  onVoltar,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onAvancar: () => void;
-  onVoltar: () => void;
+function EtapaEscritaLivre({ value, onChange, onAvancar, onVoltar }: {
+  value: string; onChange: (v: string) => void; onAvancar: () => void; onVoltar: () => void;
 }) {
   return (
     <div>
-      <p
-        className="text-xs uppercase tracking-widest text-[#B5ABA3] mb-6 text-center"
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.2em" }}
-      >
-        espaço livre
-      </p>
-
-      <h2
-        className="text-2xl sm:text-3xl text-[#4A3328] dark:text-[#E8DDD1] mb-3 leading-snug text-center"
-        style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
-      >
-        Escreva como se ninguém
-        <br />
-        fosse te interromper.
+      <p className="label-sm" style={{ textAlign: "center", marginBottom: 20 }}>espaço livre</p>
+      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.5rem, 3.5vw, 2.1rem)", color: "var(--fg)", lineHeight: 1.3, marginBottom: 8, textAlign: "center" }}>
+        Escreva como se ninguém<br />fosse te interromper.
       </h2>
-
-      <p
-        className="text-center text-xs text-[#B5ABA3] mb-8"
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-      >
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.78rem", color: "#B5ABA3", marginBottom: 28, textAlign: "center" }}>
         Pode ser qualquer coisa. Uma lembrança, um desabafo, uma frase solta.
       </p>
-
       <textarea
+        className="pron-textarea"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={e => onChange(e.target.value)}
         placeholder="Tudo que vier..."
         rows={10}
         autoFocus
-        className="
-          w-full bg-transparent border border-[#EDE6DC] dark:border-[#2C2320]
-          focus:border-[#C4897A] dark:focus:border-[#C4897A]
-          rounded-xl p-5 text-[#4A3328] dark:text-[#E8DDD1]
-          placeholder-[#CEC8C2] dark:placeholder-[#3D302C]
-          leading-relaxed transition-colors duration-200
-        "
-        style={{
-          fontFamily: "var(--font-inter)",
-          fontWeight: 300,
-          fontSize: "0.95rem",
-          lineHeight: "1.85",
-        }}
       />
-
-      <div className="flex items-center justify-between mt-8">
-        <button
-          onClick={onVoltar}
-          className="flex items-center gap-2 text-sm text-[#B5ABA3] hover:text-[#9B9088] transition-colors"
-          style={{ fontFamily: "var(--font-inter)", fontWeight: 300 }}
-        >
-          <ChevronLeft size={16} strokeWidth={1.5} />
-          voltar
-        </button>
-        <button
-          onClick={onAvancar}
-          className="
-            flex items-center gap-2 px-6 py-3 rounded-full text-sm
-            bg-[#4A3328] dark:bg-[#C4897A] text-[#FAF9F7] dark:text-white
-            hover:bg-[#6B4C3B] dark:hover:bg-[#A96B5C]
-            transition-all duration-200 hover:shadow-[0_4px_16px_rgba(196,137,122,0.25)]
-          "
-          style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-        >
-          finalizar
-          <Check size={15} strokeWidth={2} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 32 }}>
+        <button className="btn-ghost" onClick={onVoltar}><ChevronLeft size={16} strokeWidth={1.5} />voltar</button>
+        <button className="btn-primary" onClick={onAvancar}>
+          finalizar <Check size={14} strokeWidth={2} />
         </button>
       </div>
     </div>
@@ -601,17 +376,11 @@ function EtapaEscritaLivre({
 
 function EtapaFinalizando() {
   return (
-    <div className="text-center py-12">
-      <div
-        className="w-12 h-12 rounded-full border border-[#C4897A] mx-auto mb-8 flex items-center justify-center"
-        style={{ animation: "breathe 2s ease-in-out infinite" }}
-      >
-        <div className="w-3 h-3 rounded-full bg-[#C4897A]" style={{ animation: "breathe 2s ease-in-out infinite 0.5s" }} />
+    <div style={{ textAlign: "center", padding: "60px 0" }}>
+      <div style={{ width: 44, height: 44, borderRadius: "50%", border: "1.5px solid #C4897A", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", animation: "breathe 2s ease-in-out infinite" }}>
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#C4897A", animation: "breathe 2s ease-in-out infinite 0.4s" }} />
       </div>
-      <p
-        className="text-[#9B9088] text-sm"
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 300, letterSpacing: "0.06em" }}
-      >
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.9rem", color: "var(--muted)" }}>
         Guardando sua história com cuidado...
       </p>
     </div>
@@ -620,54 +389,20 @@ function EtapaFinalizando() {
 
 function EtapaConcluido({ nome, onVer }: { nome: string; onVer: () => void }) {
   const [show, setShow] = useState(false);
-  useEffect(() => { setTimeout(() => setShow(true), 200); }, []);
-
+  useEffect(() => { setTimeout(() => setShow(true), 150); }, []);
+  const primeiro = nome.split(" ")[0];
   return (
-    <div
-      className="text-center"
-      style={{
-        opacity: show ? 1 : 0,
-        transform: show ? "translateY(0)" : "translateY(20px)",
-        transition: "opacity 0.8s ease, transform 0.8s ease",
-      }}
-    >
-      <div className="flex items-center justify-center gap-3 mb-10">
-        <div className="h-px w-12 bg-[#D9CEBF] dark:bg-[#3D302C]" />
-        <div className="w-2 h-2 rounded-full bg-[#C4897A]" />
-        <div className="h-px w-12 bg-[#D9CEBF] dark:bg-[#3D302C]" />
-      </div>
-
-      <h2
-        className="text-3xl sm:text-4xl text-[#4A3328] dark:text-[#E8DDD1] mb-5 leading-snug"
-        style={{ fontFamily: "var(--font-playfair)", fontStyle: "italic", fontWeight: 400 }}
-      >
-        Obrigada por dividir
-        <br />
-        sua história comigo{nome ? `, ${nome.split(" ")[0]}` : ""}.
+    <div style={{ textAlign: "center", opacity: show ? 1 : 0, transform: show ? "translateY(0)" : "translateY(20px)", transition: "opacity 0.8s ease, transform 0.8s ease" }}>
+      <Divisor />
+      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.7rem, 4vw, 2.5rem)", color: "var(--fg)", lineHeight: 1.3, marginBottom: 20 }}>
+        Obrigada por dividir<br />sua história comigo{primeiro ? `, ${primeiro}` : ""}.
       </h2>
-
-      <p
-        className="text-[#9B9088] mb-12 leading-relaxed"
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 300, fontSize: "0.95rem" }}
-      >
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.95rem", color: "var(--muted)", marginBottom: 48, lineHeight: 1.8 }}>
         Nos vemos em breve.{" "}
-        <span className="italic" style={{ fontFamily: "var(--font-playfair)" }}>
-          Com calma.
-        </span>
+        <em style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>Com calma.</em>
       </p>
-
-      <button
-        onClick={onVer}
-        className="
-          inline-flex items-center gap-3 px-8 py-3.5 rounded-full
-          border border-[#C4897A] text-[#C4897A]
-          hover:bg-[#C4897A] hover:text-white
-          text-sm transition-all duration-300
-        "
-        style={{ fontFamily: "var(--font-inter)", fontWeight: 400 }}
-      >
-        Ver meu prontuário
-        <ArrowRight size={15} strokeWidth={1.5} />
+      <button className="btn-primary" onClick={onVer}>
+        Ver meu prontuário <ArrowRight size={15} strokeWidth={1.5} />
       </button>
     </div>
   );
