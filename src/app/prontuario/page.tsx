@@ -32,7 +32,6 @@ export default function ProntuarioPage() {
   const [form, setForm] = useState<ProntuarioForm>(VAZIO);
   const [animando, setAnimando] = useState(false);
   const [animDir, setAnimDir] = useState<"out" | "in">("in");
-  const [salvandoAuto, setSalvandoAuto] = useState(false);
   const [prontuarioId, setProntuarioId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,9 +41,6 @@ export default function ProntuarioPage() {
 
   useEffect(() => {
     localStorage.setItem("indicapsi-draft", JSON.stringify(form));
-    setSalvandoAuto(true);
-    const t = setTimeout(() => setSalvandoAuto(false), 1000);
-    return () => clearTimeout(t);
   }, [form]);
 
   const pct = () => {
@@ -180,12 +176,7 @@ export default function ProntuarioPage() {
         <button onClick={() => router.push("/")} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9088", fontSize: "0.875rem", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300 }}>
           ← indicapsi
         </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <span style={{ fontSize: "0.72rem", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, color: salvandoAuto ? "#C4897A" : "#CEC8C2", transition: "color 0.4s" }}>
-            {salvandoAuto ? "salvando..." : "salvo"}
-          </span>
-          <ThemeToggle />
-        </div>
+        <ThemeToggle />
       </nav>
 
       {/* Progresso */}
@@ -206,11 +197,10 @@ export default function ProntuarioPage() {
               value={form[PERGUNTAS[perguntaIdx].id as keyof ProntuarioForm]}
               onChange={v => setForm(f => ({ ...f, [PERGUNTAS[perguntaIdx].id]: v }))}
               onAvancar={avancar}
-              onVoltar={voltar}
               mensagem={MENSAGENS[perguntaIdx % MENSAGENS.length]}
             />
           )}
-          {etapa === "escrita_livre" && <EtapaEscritaLivre value={form.escrita_livre} onChange={v => setForm(f => ({ ...f, escrita_livre: v }))} onAvancar={avancar} onVoltar={voltar} />}
+          {etapa === "escrita_livre" && <EtapaEscritaLivre value={form.escrita_livre} onChange={v => setForm(f => ({ ...f, escrita_livre: v }))} onAvancar={avancar} />}
           {etapa === "finalizando"   && <EtapaFinalizando />}
           {etapa === "concluido"     && <EtapaConcluido nome={form.nome} onVer={() => prontuarioId && router.push(`/prontuario/${prontuarioId}`)} />}
         </div>
@@ -298,9 +288,9 @@ function EtapaIdentificacao({ form, setForm, onAvancar, onVoltar }: {
   );
 }
 
-function EtapaPergunta({ pergunta, idx, total, value, onChange, onAvancar, onVoltar, mensagem }: {
+function EtapaPergunta({ pergunta, idx, total, value, onChange, onAvancar, mensagem }: {
   pergunta: (typeof PERGUNTAS)[0]; idx: number; total: number; value: string;
-  onChange: (v: string) => void; onAvancar: () => void; onVoltar: () => void; mensagem: string;
+  onChange: (v: string) => void; onAvancar: () => void; mensagem: string;
 }) {
   return (
     <div>
@@ -333,8 +323,7 @@ function EtapaPergunta({ pergunta, idx, total, value, onChange, onAvancar, onVol
         autoFocus
       />
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 32 }}>
-        <button className="btn-ghost" onClick={onVoltar}><ChevronLeft size={16} strokeWidth={1.5} />voltar</button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 32 }}>
         <button className="btn-rose" onClick={onAvancar}>
           {idx === total - 1 ? "última parte" : "próxima"}
           <ChevronRight size={16} strokeWidth={1.5} />
@@ -344,8 +333,8 @@ function EtapaPergunta({ pergunta, idx, total, value, onChange, onAvancar, onVol
   );
 }
 
-function EtapaEscritaLivre({ value, onChange, onAvancar, onVoltar }: {
-  value: string; onChange: (v: string) => void; onAvancar: () => void; onVoltar: () => void;
+function EtapaEscritaLivre({ value, onChange, onAvancar }: {
+  value: string; onChange: (v: string) => void; onAvancar: () => void;
 }) {
   return (
     <div>
@@ -364,8 +353,7 @@ function EtapaEscritaLivre({ value, onChange, onAvancar, onVoltar }: {
         rows={10}
         autoFocus
       />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 32 }}>
-        <button className="btn-ghost" onClick={onVoltar}><ChevronLeft size={16} strokeWidth={1.5} />voltar</button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 32 }}>
         <button className="btn-primary" onClick={onAvancar}>
           finalizar <Check size={14} strokeWidth={2} />
         </button>
