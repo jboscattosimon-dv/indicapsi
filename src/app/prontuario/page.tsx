@@ -173,9 +173,9 @@ export default function ProntuarioPage() {
 
       {/* Nav */}
       <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px", borderBottom: "1px solid var(--border)", position: "relative", zIndex: 10 }}>
-        <button onClick={() => router.push("/")} style={{ background: "none", border: "none", cursor: "pointer", color: "#9B9088", fontSize: "0.875rem", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300 }}>
-          ← indicapsi
-        </button>
+        <span style={{ fontSize: "0.7rem", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, color: "#B5ABA3", letterSpacing: "0.2em", textTransform: "uppercase" }}>
+          indicapsi
+        </span>
         <ThemeToggle />
       </nav>
 
