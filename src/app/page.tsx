@@ -344,17 +344,6 @@ export default function Home() {
       </div>
 
       <MusicPlayer />
-
-      <style jsx global>{`
-        @keyframes marquee {
-          from { transform: translateX(0); }
-          to   { transform: translateX(-50%); }
-        }
-        @keyframes breathe {
-          0%, 100% { transform: scale(1); opacity: var(--op, 0.15); }
-          50%       { transform: scale(1.06); opacity: calc(var(--op, 0.15) * 1.5); }
-        }
-      `}</style>
     </main>
   );
 }

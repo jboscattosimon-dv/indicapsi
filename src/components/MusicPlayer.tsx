@@ -71,10 +71,7 @@ export function MusicPlayer() {
         {/* Spinner enquanto carrega */}
         {!loaded && (
           <div className="h-[152px] flex items-center justify-center">
-            <div
-              className="w-5 h-5 rounded-full border border-[#C4897A]/30 border-t-[#C4897A]"
-              style={{ animation: "spin 1s linear infinite" }}
-            />
+            <div className="w-5 h-5 rounded-full border border-[#C4897A]/30 border-t-[#C4897A] animate-spin-slow" />
           </div>
         )}
 
@@ -92,11 +89,6 @@ export function MusicPlayer() {
         />
       </div>
 
-      <style jsx global>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </>
   );
 }
