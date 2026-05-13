@@ -5,30 +5,38 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, ChevronLeft, ArrowRight, Check } from "lucide-react";
 import { MusicPlayer } from "@/components/MusicPlayer";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { PERGUNTAS, type ProntuarioForm } from "@/lib/types";
+import { type ProntuarioForm } from "@/lib/types";
 import { salvarProntuario } from "@/lib/supabase";
 
-type Etapa = "intro" | "identificacao" | "pergunta" | "escrita_livre" | "finalizando" | "concluido";
-
-const MENSAGENS = [
-  "Obrigada por confiar.",
-  "Você está no lugar certo.",
-  "Respire. Continue no seu tempo.",
-  "Cada palavra sua importa.",
-  "Não existe resposta errada aqui.",
-  "Você está fazendo algo muito corajoso.",
-  "Estou aqui, ouvindo.",
-];
+type Etapa =
+  | "intro"
+  | "identificacao"
+  | "contato"
+  | "profissao"
+  | "saude"
+  | "motivo"
+  | "finalizando"
+  | "concluido";
 
 const VAZIO: ProntuarioForm = {
-  nome: "", idade: "", motivo: "", momento_perdida: "", relacao_consigo: "",
-  vive_outros: "", ocupa_mente: "", como_corpo: "", recuperar: "", escrita_livre: "",
+  nome: "", data_nascimento: "", genero: "", estado_civil: "",
+  cpf: "", endereco: "", cidade_estado: "", modalidade: "",
+  whatsapp: "", email: "", profissao: "", medicacao: "", motivo: "",
 };
+
+const ETAPAS: Etapa[] = ["intro", "identificacao", "contato", "profissao", "saude", "motivo"];
+
+function pctEtapa(etapa: Etapa): number {
+  const map: Record<Etapa, number> = {
+    intro: 0, identificacao: 20, contato: 40, profissao: 60, saude: 75, motivo: 88,
+    finalizando: 100, concluido: 100,
+  };
+  return map[etapa] ?? 0;
+}
 
 export default function ProntuarioPage() {
   const router = useRouter();
   const [etapa, setEtapa] = useState<Etapa>("intro");
-  const [perguntaIdx, setPerguntaIdx] = useState(0);
   const [form, setForm] = useState<ProntuarioForm>(VAZIO);
   const [animando, setAnimando] = useState(false);
   const [animDir, setAnimDir] = useState<"out" | "in">("in");
@@ -43,14 +51,6 @@ export default function ProntuarioPage() {
     localStorage.setItem("indicapsi-draft", JSON.stringify(form));
   }, [form]);
 
-  const pct = () => {
-    if (etapa === "intro") return 0;
-    if (etapa === "identificacao") return 8;
-    if (etapa === "pergunta") return 15 + (perguntaIdx / PERGUNTAS.length) * 65;
-    if (etapa === "escrita_livre") return 85;
-    return 100;
-  };
-
   const ir = useCallback((fn: () => void) => {
     setAnimDir("out");
     setAnimando(true);
@@ -61,34 +61,63 @@ export default function ProntuarioPage() {
     }, 280);
   }, []);
 
+  const proximaEtapa: Record<Etapa, Etapa | null> = {
+    intro: "identificacao",
+    identificacao: "contato",
+    contato: "profissao",
+    profissao: "saude",
+    saude: "motivo",
+    motivo: "finalizando",
+    finalizando: "concluido",
+    concluido: null,
+  };
+
+  const etapaAnterior: Record<Etapa, Etapa | null> = {
+    intro: null,
+    identificacao: "intro",
+    contato: "identificacao",
+    profissao: "contato",
+    saude: "profissao",
+    motivo: "saude",
+    finalizando: null,
+    concluido: null,
+  };
+
   const avancar = () => {
-    if (etapa === "intro") ir(() => setEtapa("identificacao"));
-    else if (etapa === "identificacao" && form.nome.trim()) ir(() => { setEtapa("pergunta"); setPerguntaIdx(0); });
-    else if (etapa === "pergunta") {
-      if (perguntaIdx < PERGUNTAS.length - 1) ir(() => setPerguntaIdx(i => i + 1));
-      else ir(() => setEtapa("escrita_livre"));
-    } else if (etapa === "escrita_livre") {
+    const prox = proximaEtapa[etapa];
+    if (!prox) return;
+    if (prox === "finalizando") {
       ir(() => setEtapa("finalizando"));
       setTimeout(finalizar, 400);
+    } else {
+      ir(() => setEtapa(prox));
     }
   };
 
   const voltar = () => {
-    if (etapa === "identificacao") ir(() => setEtapa("intro"));
-    else if (etapa === "pergunta") {
-      if (perguntaIdx > 0) ir(() => setPerguntaIdx(i => i - 1));
-      else ir(() => setEtapa("identificacao"));
-    } else if (etapa === "escrita_livre") ir(() => { setEtapa("pergunta"); setPerguntaIdx(PERGUNTAS.length - 1); });
+    const ant = etapaAnterior[etapa];
+    if (ant) ir(() => setEtapa(ant));
   };
 
   const finalizar = async () => {
     const id = `pron_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const dados = {
-      id, paciente_nome: form.nome, idade: form.idade, motivo: form.motivo,
-      momento_perdida: form.momento_perdida, relacao_consigo: form.relacao_consigo,
-      vive_outros: form.vive_outros, ocupa_mente: form.ocupa_mente,
-      como_corpo: form.como_corpo, recuperar: form.recuperar,
-      escrita_livre: form.escrita_livre, criado_em: new Date().toISOString(), status: "completo",
+      id,
+      paciente_nome: form.nome,
+      data_nascimento: form.data_nascimento,
+      genero: form.genero,
+      estado_civil: form.estado_civil,
+      cpf: form.cpf,
+      endereco: form.endereco,
+      cidade_estado: form.cidade_estado,
+      modalidade: form.modalidade,
+      whatsapp: form.whatsapp,
+      email: form.email,
+      profissao: form.profissao,
+      medicacao: form.medicacao,
+      motivo: form.motivo,
+      criado_em: new Date().toISOString(),
+      status: "completo",
     };
     const hist = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
     hist.unshift({ ...dados, nome: form.nome });
@@ -113,13 +142,13 @@ export default function ProntuarioPage() {
         .pron-input {
           width: 100%; background: transparent;
           border: none; border-bottom: 1.5px solid #D9CEBF;
-          color: var(--fg); padding: 12px 0; font-size: 1.15rem;
-          font-family: 'Playfair Display', Georgia, serif; font-style: italic;
+          color: var(--fg); padding: 12px 0; font-size: 1.05rem;
+          font-family: 'Inter', system-ui, sans-serif; font-weight: 300;
           transition: border-color 0.2s;
         }
         .pron-input::placeholder { color: #CEC8C2; }
         .pron-input:focus { outline: none; border-color: #C4897A; }
-        .dark .pron-input { border-color: #3D302C; }
+        .dark .pron-input { border-color: #3D302C; color: #E8DDD1; }
         .dark .pron-input:focus { border-color: #C4897A; }
         .pron-textarea {
           width: 100%; background: transparent;
@@ -131,7 +160,7 @@ export default function ProntuarioPage() {
         }
         .pron-textarea::placeholder { color: #CEC8C2; }
         .pron-textarea:focus { outline: none; border-color: #C4897A; }
-        .dark .pron-textarea { border-color: #2C2320; }
+        .dark .pron-textarea { border-color: #2C2320; color: #E8DDD1; }
         .dark .pron-textarea:focus { border-color: #C4897A; }
         .btn-primary {
           display: inline-flex; align-items: center; gap: 10px;
@@ -164,12 +193,26 @@ export default function ProntuarioPage() {
         .label-sm {
           display: block; font-family: 'Inter', system-ui, sans-serif;
           font-size: 0.68rem; font-weight: 300; color: #B5ABA3;
-          text-transform: uppercase; letter-spacing: 0.18em; margin-bottom: 12px;
+          text-transform: uppercase; letter-spacing: 0.18em; margin-bottom: 10px;
         }
+        .pill-btn {
+          padding: 10px 22px; border-radius: 999px; border: 1.5px solid #D9CEBF;
+          background: transparent; color: var(--fg); cursor: pointer;
+          font-family: 'Inter', system-ui, sans-serif; font-size: 0.875rem;
+          font-weight: 300; transition: all 0.18s ease;
+        }
+        .pill-btn:hover { border-color: #C4897A; color: #C4897A; }
+        .pill-btn.ativo { border-color: #C4897A; background: #C4897A; color: #fff; }
+        .dark .pill-btn { border-color: #3D302C; }
+        .dark .pill-btn.ativo { border-color: #C4897A; background: #C4897A; }
+        .field-grid { display: grid; gap: 32px; }
+        .field-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px 24px; }
+        @media (max-width: 480px) { .field-grid-2 { grid-template-columns: 1fr; } }
       `}</style>
 
-      {/* Orb */}
+      {/* Orb decorativo */}
       <div style={{ position: "fixed", top: 0, right: 0, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, #E8C4BB 0%, transparent 70%)", filter: "blur(70px)", opacity: 0.12, pointerEvents: "none" }} />
+      <div style={{ position: "fixed", bottom: 100, left: -60, width: 260, height: 260, borderRadius: "50%", background: "radial-gradient(circle, #C4897A 0%, transparent 70%)", filter: "blur(80px)", opacity: 0.07, pointerEvents: "none" }} />
 
       {/* Nav */}
       <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px", borderBottom: "1px solid var(--border)", position: "relative", zIndex: 10 }}>
@@ -179,30 +222,22 @@ export default function ProntuarioPage() {
         <ThemeToggle />
       </nav>
 
-      {/* Progresso */}
+      {/* Barra de progresso */}
       <div style={{ height: 2, background: "rgba(196,137,122,0.12)", position: "relative" }}>
-        <div style={{ height: "100%", width: `${pct()}%`, background: "linear-gradient(90deg, #C4897A, #A96B5C)", borderRadius: 1, transition: "width 0.6s cubic-bezier(.4,0,.2,1)" }} />
+        <div style={{ height: "100%", width: `${pctEtapa(etapa)}%`, background: "linear-gradient(90deg, #C4897A, #A96B5C)", borderRadius: 1, transition: "width 0.6s cubic-bezier(.4,0,.2,1)" }} />
       </div>
 
       {/* Conteúdo */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 24px" }}>
-        <div style={{ width: "100%", maxWidth: 560, ...animStyle }}>
-          {etapa === "intro"         && <EtapaIntro onAvancar={avancar} />}
-          {etapa === "identificacao" && <EtapaIdentificacao form={form} setForm={setForm} onAvancar={avancar} onVoltar={voltar} />}
-          {etapa === "pergunta"      && (
-            <EtapaPergunta
-              pergunta={PERGUNTAS[perguntaIdx]}
-              idx={perguntaIdx}
-              total={PERGUNTAS.length}
-              value={form[PERGUNTAS[perguntaIdx].id as keyof ProntuarioForm]}
-              onChange={v => setForm(f => ({ ...f, [PERGUNTAS[perguntaIdx].id]: v }))}
-              onAvancar={avancar}
-              mensagem={MENSAGENS[perguntaIdx % MENSAGENS.length]}
-            />
-          )}
-          {etapa === "escrita_livre" && <EtapaEscritaLivre value={form.escrita_livre} onChange={v => setForm(f => ({ ...f, escrita_livre: v }))} onAvancar={avancar} />}
-          {etapa === "finalizando"   && <EtapaFinalizando />}
-          {etapa === "concluido"     && <EtapaConcluido nome={form.nome} onVer={() => prontuarioId && router.push(`/prontuario/${prontuarioId}`)} />}
+        <div style={{ width: "100%", maxWidth: 580, ...animStyle }}>
+          {etapa === "intro"          && <EtapaIntro onAvancar={avancar} />}
+          {etapa === "identificacao"  && <EtapaIdentificacao form={form} setForm={setForm} onAvancar={avancar} onVoltar={voltar} />}
+          {etapa === "contato"        && <EtapaContato form={form} setForm={setForm} onAvancar={avancar} onVoltar={voltar} />}
+          {etapa === "profissao"      && <EtapaProfissao form={form} setForm={setForm} onAvancar={avancar} onVoltar={voltar} />}
+          {etapa === "saude"          && <EtapaSaude form={form} setForm={setForm} onAvancar={avancar} onVoltar={voltar} />}
+          {etapa === "motivo"         && <EtapaMotivo form={form} setForm={setForm} onAvancar={avancar} onVoltar={voltar} />}
+          {etapa === "finalizando"    && <EtapaFinalizando />}
+          {etapa === "concluido"      && <EtapaConcluido nome={form.nome} onVer={() => prontuarioId && router.push(`/prontuario/${prontuarioId}`)} />}
         </div>
       </div>
 
@@ -211,11 +246,11 @@ export default function ProntuarioPage() {
   );
 }
 
-/* ─── ETAPAS ─── */
+/* ─── COMPONENTES AUXILIARES ─── */
 
 function Divisor() {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
       <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
       <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#C4897A" }} />
       <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
@@ -223,21 +258,64 @@ function Divisor() {
   );
 }
 
+function NavButtons({ onVoltar, onAvancar, desabilitado, labelAvancar = "continuar" }: {
+  onVoltar?: () => void;
+  onAvancar: () => void;
+  desabilitado?: boolean;
+  labelAvancar?: string;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: onVoltar ? "space-between" : "flex-end", marginTop: 48 }}>
+      {onVoltar && (
+        <button className="btn-ghost" onClick={onVoltar}>
+          <ChevronLeft size={16} strokeWidth={1.5} />voltar
+        </button>
+      )}
+      <button className="btn-rose" onClick={onAvancar} disabled={desabilitado}>
+        {labelAvancar} <ChevronRight size={16} strokeWidth={1.5} />
+      </button>
+    </div>
+  );
+}
+
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="label-sm">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+/* ─── ETAPAS ─── */
+
 function EtapaIntro({ onAvancar }: { onAvancar: () => void }) {
   return (
     <div style={{ textAlign: "center" }}>
       <Divisor />
-      <p className="label-sm" style={{ marginBottom: 24 }}>prontuário inicial</p>
-      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.8rem, 4vw, 2.6rem)", color: "var(--fg)", lineHeight: 1.25, marginBottom: 20 }}>
-        Antes de começarmos,<br />quero te conhecer.
-      </h2>
-      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.95rem", color: "var(--muted)", lineHeight: 1.8, maxWidth: 380, margin: "0 auto 48px" }}>
-        Este não é um formulário. É um espaço de escuta.<br />
-        Responda no seu tempo, com suas palavras.<br />
-        Não há resposta certa.
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.7rem", color: "#B5ABA3", textTransform: "uppercase", letterSpacing: "0.2em", marginBottom: 24 }}>
+        prontuário psicológico
       </p>
+      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.8rem, 4vw, 2.5rem)", color: "var(--fg)", lineHeight: 1.25, marginBottom: 28 }}>
+        Cadastro de Prontuário
+      </h2>
+
+      <div style={{ background: "var(--cream)", borderRadius: 16, padding: "24px 28px", marginBottom: 36, textAlign: "left" }}>
+        <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.9rem", color: "var(--muted)", lineHeight: 1.85, margin: 0 }}>
+          De acordo com a Resolução 001/2009 do Conselho Federal de Psicologia, toda sessão de psicoterapia
+          deve ser documentada em um prontuário do paciente.
+        </p>
+        <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.9rem", color: "var(--muted)", lineHeight: 1.85, margin: "12px 0 0" }}>
+          As informações preenchidas aqui são <em style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>confidenciais</em> e
+          utilizadas exclusivamente para compor o prontuário psicológico.
+        </p>
+        <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontSize: "0.85rem", color: "#C4897A", margin: "16px 0 0" }}>
+          Letícia Bittencourt Reis — CRP 06/189562
+        </p>
+      </div>
+
       <button className="btn-primary" onClick={onAvancar}>
-        Estou pronta
+        Preencher cadastro
         <ArrowRight size={15} strokeWidth={1.5} />
       </button>
     </div>
@@ -250,114 +328,216 @@ function EtapaIdentificacao({ form, setForm, onAvancar, onVoltar }: {
   onAvancar: () => void;
   onVoltar: () => void;
 }) {
+  const set = (k: keyof ProntuarioForm) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const GENEROS = ["Feminino", "Masculino", "Não-binário", "Prefiro não dizer"];
+  const ESTADOS_CIVIS = ["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União estável"];
+
   return (
     <div>
-      <p className="label-sm" style={{ textAlign: "center", marginBottom: 40 }}>para começar</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
-        <div>
-          <label className="label-sm">como você se chama?</label>
-          <input
-            className="pron-input"
-            type="text"
-            value={form.nome}
-            onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
-            placeholder="Seu nome..."
-            autoFocus
-            onKeyDown={e => e.key === "Enter" && form.nome && onAvancar()}
-          />
-        </div>
-        <div>
-          <label className="label-sm">quantos anos você tem?</label>
-          <input
-            className="pron-input"
-            type="text"
-            inputMode="numeric"
-            value={form.idade}
-            onChange={e => setForm(f => ({ ...f, idade: e.target.value }))}
-            placeholder="Sua idade..."
-          />
-        </div>
+      <p className="label-sm" style={{ textAlign: "center", marginBottom: 8 }}>01 — identificação</p>
+      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "1.5rem", color: "var(--fg)", textAlign: "center", marginBottom: 36 }}>
+        Quem é você?
+      </h3>
+
+      <div className="field-grid">
+        <Campo label="Nome Completo / Nome Social">
+          <input className="pron-input" type="text" value={form.nome} onChange={e => set("nome")(e.target.value)} placeholder="Seu nome..." autoFocus />
+        </Campo>
+
+        <Campo label="Data de Nascimento">
+          <input className="pron-input" type="text" value={form.data_nascimento} onChange={e => set("data_nascimento")(e.target.value)} placeholder="DD/MM/AAAA" inputMode="numeric" />
+        </Campo>
+
+        <Campo label="Gênero / Identidade de Gênero">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
+            {GENEROS.map(g => (
+              <button key={g} className={`pill-btn${form.genero === g ? " ativo" : ""}`} onClick={() => set("genero")(g)}>{g}</button>
+            ))}
+          </div>
+          <input className="pron-input" type="text" value={GENEROS.includes(form.genero) ? "" : form.genero} onChange={e => set("genero")(e.target.value)} placeholder="Outro..." style={{ marginTop: 12 }} />
+        </Campo>
+
+        <Campo label="Estado Civil">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
+            {ESTADOS_CIVIS.map(e => (
+              <button key={e} className={`pill-btn${form.estado_civil === e ? " ativo" : ""}`} onClick={() => set("estado_civil")(e)}>{e}</button>
+            ))}
+          </div>
+        </Campo>
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 52 }}>
-        <button className="btn-ghost" onClick={onVoltar}><ChevronLeft size={16} strokeWidth={1.5} />voltar</button>
-        <button className="btn-rose" onClick={onAvancar} disabled={!form.nome.trim()}>
-          continuar <ChevronRight size={16} strokeWidth={1.5} />
-        </button>
-      </div>
+
+      <NavButtons onVoltar={onVoltar} onAvancar={onAvancar} desabilitado={!form.nome.trim()} />
     </div>
   );
 }
 
-function EtapaPergunta({ pergunta, idx, total, value, onChange, onAvancar, mensagem }: {
-  pergunta: (typeof PERGUNTAS)[0]; idx: number; total: number; value: string;
-  onChange: (v: string) => void; onAvancar: () => void; mensagem: string;
+function EtapaContato({ form, setForm, onAvancar, onVoltar }: {
+  form: ProntuarioForm;
+  setForm: React.Dispatch<React.SetStateAction<ProntuarioForm>>;
+  onAvancar: () => void;
+  onVoltar: () => void;
 }) {
+  const set = (k: keyof ProntuarioForm) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+
   return (
     <div>
-      {/* Contador + mensagem */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 36 }}>
-        <span style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.75rem", color: "#B5ABA3", fontVariantNumeric: "tabular-nums" }}>
-          {String(idx + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-        </span>
-        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-        <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontSize: "0.82rem", color: "#C4897A" }}>
-          {mensagem}
-        </span>
+      <p className="label-sm" style={{ textAlign: "center", marginBottom: 8 }}>02 — contato e localização</p>
+      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "1.5rem", color: "var(--fg)", textAlign: "center", marginBottom: 36 }}>
+        Como encontrar você?
+      </h3>
+
+      <div className="field-grid">
+        <Campo label="CPF">
+          <input className="pron-input" type="text" value={form.cpf} onChange={e => set("cpf")(e.target.value)} placeholder="000.000.000-00" inputMode="numeric" />
+        </Campo>
+
+        <Campo label="Endereço">
+          <input className="pron-input" type="text" value={form.endereco} onChange={e => set("endereco")(e.target.value)} placeholder="Rua, número, bairro..." />
+        </Campo>
+
+        <div className="field-grid-2">
+          <Campo label="Cidade e Estado">
+            <input className="pron-input" type="text" value={form.cidade_estado} onChange={e => set("cidade_estado")(e.target.value)} placeholder="São Paulo, SP" />
+          </Campo>
+          <Campo label="Contato (WhatsApp)">
+            <input className="pron-input" type="text" value={form.whatsapp} onChange={e => set("whatsapp")(e.target.value)} placeholder="(11) 99999-9999" inputMode="tel" />
+          </Campo>
+        </div>
+
+        <Campo label="E-mail">
+          <input className="pron-input" type="email" value={form.email} onChange={e => set("email")(e.target.value)} placeholder="seu@email.com" inputMode="email" />
+        </Campo>
       </div>
 
-      {/* Pergunta */}
-      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.5rem, 3.5vw, 2.1rem)", color: "var(--fg)", lineHeight: 1.3, marginBottom: 8 }}>
-        {pergunta.pergunta}
-      </h2>
-      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.78rem", color: "#B5ABA3", marginBottom: 24 }}>
-        {pergunta.hint}
-      </p>
-
-      {/* Textarea */}
-      <textarea
-        className="pron-textarea"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={pergunta.placeholder}
-        rows={7}
-        autoFocus
-      />
-
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 32 }}>
-        <button className="btn-rose" onClick={onAvancar}>
-          {idx === total - 1 ? "última parte" : "próxima"}
-          <ChevronRight size={16} strokeWidth={1.5} />
-        </button>
-      </div>
+      <NavButtons onVoltar={onVoltar} onAvancar={onAvancar} />
     </div>
   );
 }
 
-function EtapaEscritaLivre({ value, onChange, onAvancar }: {
-  value: string; onChange: (v: string) => void; onAvancar: () => void;
+function EtapaProfissao({ form, setForm, onAvancar, onVoltar }: {
+  form: ProntuarioForm;
+  setForm: React.Dispatch<React.SetStateAction<ProntuarioForm>>;
+  onAvancar: () => void;
+  onVoltar: () => void;
 }) {
+  const set = (k: keyof ProntuarioForm) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+  const MODALIDADES = ["Online", "Presencial", "Híbrido"];
+
   return (
     <div>
-      <p className="label-sm" style={{ textAlign: "center", marginBottom: 20 }}>espaço livre</p>
-      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.5rem, 3.5vw, 2.1rem)", color: "var(--fg)", lineHeight: 1.3, marginBottom: 8, textAlign: "center" }}>
-        Escreva como se ninguém<br />fosse te interromper.
-      </h2>
-      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.78rem", color: "#B5ABA3", marginBottom: 28, textAlign: "center" }}>
-        Pode ser qualquer coisa. Uma lembrança, um desabafo, uma frase solta.
+      <p className="label-sm" style={{ textAlign: "center", marginBottom: 8 }}>03 — sobre você</p>
+      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "1.5rem", color: "var(--fg)", textAlign: "center", marginBottom: 36 }}>
+        Sua vida e preferências
+      </h3>
+
+      <div className="field-grid">
+        <Campo label="Profissão">
+          <input className="pron-input" type="text" value={form.profissao} onChange={e => set("profissao")(e.target.value)} placeholder="O que você faz?" autoFocus />
+        </Campo>
+
+        <Campo label="Modalidade de Atendimento">
+          <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+            {MODALIDADES.map(m => (
+              <button key={m} className={`pill-btn${form.modalidade === m ? " ativo" : ""}`} onClick={() => set("modalidade")(m)}
+                style={{ flex: 1, textAlign: "center", padding: "14px 8px" }}>
+                {m}
+              </button>
+            ))}
+          </div>
+        </Campo>
+      </div>
+
+      <NavButtons onVoltar={onVoltar} onAvancar={onAvancar} desabilitado={!form.profissao.trim() && !form.modalidade} />
+    </div>
+  );
+}
+
+function EtapaSaude({ form, setForm, onAvancar, onVoltar }: {
+  form: ProntuarioForm;
+  setForm: React.Dispatch<React.SetStateAction<ProntuarioForm>>;
+  onAvancar: () => void;
+  onVoltar: () => void;
+}) {
+  const set = (k: keyof ProntuarioForm) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const usaMedicacao = form.medicacao.startsWith("Sim");
+  const descMedicacao = usaMedicacao ? form.medicacao.replace(/^Sim[,:]?\s*/i, "") : "";
+
+  const toggleMed = (v: "sim" | "nao") => {
+    if (v === "sim") set("medicacao")("Sim — ");
+    else set("medicacao")("Não");
+  };
+
+  return (
+    <div>
+      <p className="label-sm" style={{ textAlign: "center", marginBottom: 8 }}>04 — saúde</p>
+      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "1.5rem", color: "var(--fg)", textAlign: "center", marginBottom: 36 }}>
+        Um pouco sobre sua saúde
+      </h3>
+
+      <div className="field-grid">
+        <Campo label="Faz uso de medicação psiquiátrica?">
+          <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+            <button className={`pill-btn${usaMedicacao ? " ativo" : ""}`} onClick={() => toggleMed("sim")}
+              style={{ flex: 1, textAlign: "center", padding: "14px 8px" }}>
+              Sim
+            </button>
+            <button className={`pill-btn${form.medicacao === "Não" ? " ativo" : ""}`} onClick={() => toggleMed("nao")}
+              style={{ flex: 1, textAlign: "center", padding: "14px 8px" }}>
+              Não
+            </button>
+          </div>
+
+          {usaMedicacao && (
+            <div style={{ marginTop: 20 }}>
+              <label className="label-sm">Qual medicação?</label>
+              <input
+                className="pron-input"
+                type="text"
+                value={descMedicacao}
+                onChange={e => set("medicacao")(`Sim — ${e.target.value}`)}
+                placeholder="Nome do medicamento, dosagem..."
+                autoFocus
+              />
+            </div>
+          )}
+        </Campo>
+      </div>
+
+      <NavButtons onVoltar={onVoltar} onAvancar={onAvancar} desabilitado={!form.medicacao} />
+    </div>
+  );
+}
+
+function EtapaMotivo({ form, setForm, onAvancar, onVoltar }: {
+  form: ProntuarioForm;
+  setForm: React.Dispatch<React.SetStateAction<ProntuarioForm>>;
+  onAvancar: () => void;
+  onVoltar: () => void;
+}) {
+  const set = (k: keyof ProntuarioForm) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <div>
+      <p className="label-sm" style={{ textAlign: "center", marginBottom: 8 }}>05 — motivo</p>
+      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.4rem, 3.5vw, 1.9rem)", color: "var(--fg)", textAlign: "center", lineHeight: 1.3, marginBottom: 12 }}>
+        O que te trouxe até aqui?
+      </h3>
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.82rem", color: "#B5ABA3", textAlign: "center", marginBottom: 28 }}>
+        Pode começar de onde quiser. Não há resposta certa.
       </p>
+
       <textarea
         className="pron-textarea"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder="Tudo que vier..."
-        rows={10}
+        value={form.motivo}
+        onChange={e => set("motivo")(e.target.value)}
+        placeholder="Conte o que te motivou a buscar atendimento..."
+        rows={9}
         autoFocus
       />
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 32 }}>
-        <button className="btn-primary" onClick={onAvancar}>
-          finalizar <Check size={14} strokeWidth={2} />
-        </button>
-      </div>
+
+      <NavButtons onVoltar={onVoltar} onAvancar={onAvancar} labelAvancar="finalizar" desabilitado={!form.motivo.trim()} />
     </div>
   );
 }
@@ -369,7 +549,7 @@ function EtapaFinalizando() {
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#C4897A", animation: "breathe 2s ease-in-out infinite 0.4s" }} />
       </div>
       <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.9rem", color: "var(--muted)" }}>
-        Guardando sua história com cuidado...
+        Guardando seu cadastro com cuidado...
       </p>
     </div>
   );
@@ -382,12 +562,15 @@ function EtapaConcluido({ nome, onVer }: { nome: string; onVer: () => void }) {
   return (
     <div style={{ textAlign: "center", opacity: show ? 1 : 0, transform: show ? "translateY(0)" : "translateY(20px)", transition: "opacity 0.8s ease, transform 0.8s ease" }}>
       <Divisor />
-      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.7rem, 4vw, 2.5rem)", color: "var(--fg)", lineHeight: 1.3, marginBottom: 20 }}>
-        Obrigada por dividir<br />sua história comigo{primeiro ? `, ${primeiro}` : ""}.
+      <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #C4897A, #A96B5C)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 28px" }}>
+        <Check size={22} strokeWidth={1.5} color="#fff" />
+      </div>
+      <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(1.7rem, 4vw, 2.4rem)", color: "var(--fg)", lineHeight: 1.3, marginBottom: 16 }}>
+        Cadastro recebido{primeiro ? `, ${primeiro}` : ""}.
       </h2>
-      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.95rem", color: "var(--muted)", marginBottom: 48, lineHeight: 1.8 }}>
-        Nos vemos em breve.{" "}
-        <em style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>Com calma.</em>
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.92rem", color: "var(--muted)", marginBottom: 48, lineHeight: 1.8 }}>
+        Obrigada por confiar.{" "}
+        <em style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>Nos vemos em breve.</em>
       </p>
       <button className="btn-primary" onClick={onVer}>
         Ver meu prontuário <ArrowRight size={15} strokeWidth={1.5} />

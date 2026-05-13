@@ -1,51 +1,54 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Download, Printer, Edit3, Save, X } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { PERGUNTAS } from "@/lib/types";
 
 interface ProntuarioData {
   id: string;
-  nome: string;
+  nome?: string;
   paciente_nome?: string;
-  idade: string;
-  motivo: string;
-  momento_perdida: string;
-  relacao_consigo: string;
-  vive_outros: string;
-  ocupa_mente: string;
-  como_corpo: string;
-  recuperar: string;
-  escrita_livre: string;
+  data_nascimento?: string;
+  genero?: string;
+  estado_civil?: string;
+  cpf?: string;
+  endereco?: string;
+  cidade_estado?: string;
+  modalidade?: string;
+  whatsapp?: string;
+  email?: string;
+  profissao?: string;
+  medicacao?: string;
+  motivo?: string;
   criado_em: string;
-  status: string;
+  status?: string;
 }
 
 function getNome(d: ProntuarioData) {
-  return d.nome || d.paciente_nome || "—";
+  return d.paciente_nome || d.nome || "—";
 }
 
 function formatDataLonga(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  try { return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }); }
+  catch { return "—"; }
 }
 
 function formatDataCurta(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  try { return new Date(iso).toLocaleDateString("pt-BR"); }
+  catch { return "—"; }
 }
 
 export default function ProntuarioViewPage() {
-  const params  = useParams();
-  const router  = useRouter();
-  const id      = params.id as string;
-  const docRef  = useRef<HTMLDivElement>(null);
+  const params = useParams();
+  const router = useRouter();
+  const id     = params.id as string;
 
-  const [dados,     setDados]     = useState<ProntuarioData | null>(null);
-  const [editando,  setEditando]  = useState(false);
-  const [editForm,  setEditForm]  = useState<ProntuarioData | null>(null);
-  const [exportando,setExportando]= useState(false);
-  const [show,      setShow]      = useState(false);
+  const [dados,      setDados]      = useState<ProntuarioData | null>(null);
+  const [editando,   setEditando]   = useState(false);
+  const [editForm,   setEditForm]   = useState<ProntuarioData | null>(null);
+  const [exportando, setExportando] = useState(false);
+  const [show,       setShow]       = useState(false);
 
   useEffect(() => {
     const hist: ProntuarioData[] = JSON.parse(localStorage.getItem("indicapsi-historico") || "[]");
@@ -65,104 +68,141 @@ export default function ProntuarioViewPage() {
 
   const cancelar = () => { setEditForm(dados); setEditando(false); };
 
-  /* ── PDF com jsPDF nativo (texto, não screenshot) ── */
   const exportarPDF = async () => {
     if (!dados) return;
     setExportando(true);
     try {
       const { default: jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-      const W = 210, ML = 20, MR = 20, MT = 24, colW = W - ML - MR;
-      let y = MT;
+      const W = 210, ML = 20, MR = 20, colW = W - ML - MR;
+      let y = 24;
       const nome = getNome(dados);
 
-      const linha = (cor = "#EDE6DC") => {
-        pdf.setDrawColor(cor); pdf.setLineWidth(0.3);
+      const checkPage = (need: number) => { if (y + need > 272) { pdf.addPage(); y = 24; } };
+
+      const hline = (color = "#EDE6DC") => {
+        pdf.setDrawColor(color); pdf.setLineWidth(0.3);
         pdf.line(ML, y, W - MR, y); y += 6;
       };
 
-      const novaPage = () => { pdf.addPage(); y = MT; };
-
-      const checkPage = (need: number) => { if (y + need > 272) novaPage(); };
-
-      /* cabeçalho */
+      /* ── Cabeçalho ── */
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(7); pdf.setTextColor("#B5ABA3");
-      pdf.text("INDICAPSI  ·  PRONTUÁRIO TERAPÊUTICO", ML, y);
+      pdf.text("INDICAPSI  ·  PRONTUÁRIO PSICOLÓGICO", ML, y);
       pdf.text(formatDataCurta(dados.criado_em), W - MR, y, { align: "right" });
-      y += 6;
-      linha("#D9CEBF");
+      y += 6; hline("#D9CEBF");
 
-      /* nome */
-      y += 4;
-      pdf.setFontSize(28); pdf.setTextColor("#4A3328");
+      /* ── CRP ── */
+      pdf.setFontSize(7); pdf.setTextColor("#9B9088");
+      pdf.text("Letícia Bittencourt Reis  —  CRP 06/189562", ML, y); y += 10;
+
+      /* ── Nome ── */
       pdf.setFont("times", "italic");
-      pdf.text(nome, ML, y);
-      y += 10;
+      pdf.setFontSize(28); pdf.setTextColor("#4A3328");
+      pdf.text(nome, ML, y); y += 12;
 
-      /* identificação */
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(8); pdf.setTextColor("#9B9088");
-      pdf.text("NOME", ML, y);
-      pdf.text("IDADE", ML + 80, y);
-      pdf.text("DATA DO PREENCHIMENTO", ML + 130, y);
-      y += 5;
-      pdf.setFontSize(10); pdf.setTextColor("#4A3328");
-      pdf.text(nome, ML, y);
-      pdf.text(dados.idade ? `${dados.idade} anos` : "—", ML + 80, y);
-      pdf.text(formatDataLonga(dados.criado_em), ML + 130, y);
-      y += 10;
-      linha("#EDE6DC");
+      /* ── Dados pessoais em grid ── */
+      const cols = [
+        { label: "DATA DE NASC.", valor: dados.data_nascimento },
+        { label: "GÊNERO", valor: dados.genero },
+        { label: "ESTADO CIVIL", valor: dados.estado_civil },
+      ].filter(c => c.valor);
 
-      /* perguntas */
-      const pergsComEscrita = [
-        ...PERGUNTAS.map(p => ({ pergunta: p.pergunta, resposta: dados[p.id as keyof ProntuarioData] as string || "" })),
-        { pergunta: "Escrita livre", resposta: dados.escrita_livre || "" },
-      ];
-
-      pergsComEscrita.forEach((item, i) => {
-        checkPage(24);
-        y += 4;
-
-        /* número */
+      if (cols.length) {
         pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(7); pdf.setTextColor("#C4897A");
-        const num = i < PERGUNTAS.length ? String(i + 1).padStart(2, "0") : "✦";
-        pdf.text(num, ML, y);
+        const cw = colW / Math.min(cols.length, 3);
+        cols.forEach((c, i) => {
+          const x = ML + i * cw;
+          pdf.setFontSize(7); pdf.setTextColor("#9B9088");
+          pdf.text(c.label!, x, y);
+          pdf.setFontSize(9.5); pdf.setTextColor("#4A3328");
+          pdf.text(c.valor || "—", x, y + 5);
+        });
+        y += 16;
+      }
+      hline("#EDE6DC");
 
-        /* linha decorativa */
-        pdf.setDrawColor("#EDE6DC"); pdf.setLineWidth(0.2);
-        pdf.line(ML + 7, y - 1, W - MR, y - 1);
-        y += 6;
+      /* ── Contato ── */
+      const contato = [
+        { label: "CPF", valor: dados.cpf },
+        { label: "WHATSAPP", valor: dados.whatsapp },
+        { label: "E-MAIL", valor: dados.email },
+        { label: "ENDEREÇO", valor: dados.endereco },
+        { label: "CIDADE / ESTADO", valor: dados.cidade_estado },
+      ].filter(c => c.valor);
 
-        /* pergunta */
-        pdf.setFont("times", "italic");
-        pdf.setFontSize(11); pdf.setTextColor("#6B4C3B");
-        const pergWrapped = pdf.splitTextToSize(item.pergunta, colW);
-        checkPage(pergWrapped.length * 5 + 8);
-        pdf.text(pergWrapped, ML, y);
-        y += pergWrapped.length * 5.5 + 4;
+      if (contato.length) {
+        checkPage(20);
+        pdf.setFontSize(8); pdf.setTextColor("#C4897A"); pdf.setFont("helvetica", "normal");
+        pdf.text("CONTATO E LOCALIZAÇÃO", ML, y); y += 6;
+        const cw2 = contato.length >= 2 ? colW / 2 : colW;
+        const linhas = Math.ceil(contato.length / 2);
+        contato.forEach((c, i) => {
+          const col = i % 2;
+          const lin = Math.floor(i / 2);
+          const x = ML + col * cw2;
+          const yy = y + lin * 12;
+          pdf.setFontSize(7); pdf.setTextColor("#9B9088");
+          pdf.text(c.label!, x, yy);
+          pdf.setFontSize(9); pdf.setTextColor("#4A3328");
+          pdf.text(c.valor || "—", x, yy + 4.5);
+        });
+        y += linhas * 12 + 4;
+        hline("#EDE6DC");
+      }
 
-        /* resposta */
-        const resp = item.resposta.trim() || "Não respondida.";
+      /* ── Profissão + Modalidade ── */
+      const perfil = [
+        { label: "PROFISSÃO", valor: dados.profissao },
+        { label: "MODALIDADE", valor: dados.modalidade },
+      ].filter(c => c.valor);
+      if (perfil.length) {
+        checkPage(16);
+        pdf.setFontSize(8); pdf.setTextColor("#C4897A"); pdf.setFont("helvetica", "normal");
+        pdf.text("PERFIL", ML, y); y += 6;
+        perfil.forEach((c, i) => {
+          pdf.setFontSize(7); pdf.setTextColor("#9B9088");
+          pdf.text(c.label!, ML + i * (colW / 2), y);
+          pdf.setFontSize(9.5); pdf.setTextColor("#4A3328");
+          pdf.text(c.valor || "—", ML + i * (colW / 2), y + 5);
+        });
+        y += 16; hline("#EDE6DC");
+      }
+
+      /* ── Medicação ── */
+      if (dados.medicacao) {
+        checkPage(20);
+        pdf.setFontSize(8); pdf.setTextColor("#C4897A"); pdf.setFont("helvetica", "normal");
+        pdf.text("MEDICAÇÃO PSIQUIÁTRICA", ML, y); y += 6;
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(9.5); pdf.setTextColor("#4A3328");
-        const respWrapped = pdf.splitTextToSize(resp, colW);
-        respWrapped.forEach((linha: string) => {
-          checkPage(6);
-          pdf.text(linha, ML, y);
-          y += 5.5;
-        });
-        y += 4;
-      });
+        const mLines = pdf.splitTextToSize(dados.medicacao, colW);
+        mLines.forEach((l: string) => { checkPage(6); pdf.text(l, ML, y); y += 5.5; });
+        y += 4; hline("#EDE6DC");
+      }
 
-      /* rodapé de cada página */
+      /* ── Motivo da Consulta ── */
+      if (dados.motivo) {
+        checkPage(24);
+        y += 4;
+        pdf.setFont("times", "italic");
+        pdf.setFontSize(8); pdf.setTextColor("#C4897A");
+        pdf.text("Motivo da consulta", ML, y); y += 8;
+        pdf.setDrawColor("#EDE6DC"); pdf.setLineWidth(0.2);
+        pdf.line(ML, y - 4, W - MR, y - 4);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9.5); pdf.setTextColor("#4A3328");
+        const mLines = pdf.splitTextToSize(dados.motivo, colW);
+        mLines.forEach((l: string) => { checkPage(6); pdf.text(l, ML, y); y += 5.5; });
+      }
+
+      /* ── Rodapé em todas as páginas ── */
       const total = pdf.getNumberOfPages();
       for (let pg = 1; pg <= total; pg++) {
         pdf.setPage(pg);
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(7); pdf.setTextColor("#CEC8C2");
-        pdf.text("indicapsi — documento confidencial", ML, 288);
+        pdf.text("indicapsi — documento confidencial  ·  Resolução CFP 001/2009", ML, 288);
         pdf.text(`${pg} / ${total}`, W - MR, 288, { align: "right" });
       }
 
@@ -183,6 +223,8 @@ export default function ProntuarioViewPage() {
   );
 
   const nome = getNome(dados);
+  const ef = editForm || dados;
+  const setEF = (k: keyof ProntuarioData) => (v: string) => setEditForm(f => f ? { ...f, [k]: v } : f);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--pv-bg)" }}>
@@ -197,45 +239,32 @@ export default function ProntuarioViewPage() {
         .pv-btn-outline:hover { border-color:var(--pv-rose) !important; color:var(--pv-rose); }
         .pv-btn-rose { background:#C4897A; color:#fff; }
         .pv-btn-rose:hover { background:#A96B5C; }
-        .pv-btn-dark { background:var(--pv-fg); color:var(--pv-surface); }
+        .pv-btn-dark { background:var(--pv-fg); color:var(--pv-doc); }
         .pv-btn-dark:hover { opacity:0.85; }
         .pv-btn-dark:disabled { opacity:0.5; cursor:not-allowed; }
+        .pv-edit { width:100%; background:transparent; border:none; border-bottom:1.5px solid var(--pv-rose); color:var(--pv-fg); font-family:Inter,system-ui,sans-serif; font-size:0.95rem; font-weight:300; padding:6px 0; outline:none; }
         .pv-edit-area { width:100%; background:transparent; border:none; border-bottom:1.5px solid var(--pv-rose); color:var(--pv-fg); font-family:Inter,system-ui,sans-serif; font-size:0.95rem; font-weight:300; line-height:1.85; padding:8px 0; resize:none; outline:none; }
-        @media print {
-          .pv-toolbar { display:none !important; }
-          .pv-doc { box-shadow:none !important; border:none !important; }
-        }
+        @media print { .pv-toolbar { display:none !important; } .pv-doc { box-shadow:none !important; border:none !important; } }
       `}</style>
 
-      {/* ── TOOLBAR ── */}
-      <div className="pv-toolbar no-print">
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "12px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      {/* TOOLBAR */}
+      <div className="pv-toolbar">
+        <div style={{ maxWidth: 920, margin: "0 auto", padding: "12px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <button className="pv-btn pv-btn-ghost" onClick={() => router.push("/dashboard")} style={{ paddingLeft: 0 }}>
-            <ArrowLeft size={15} strokeWidth={1.5} />
-            <span>Painel</span>
+            <ArrowLeft size={15} strokeWidth={1.5} /> Painel
           </button>
-
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {editando ? (
               <>
-                <button className="pv-btn pv-btn-outline" onClick={cancelar}>
-                  <X size={13} strokeWidth={1.5} /> cancelar
-                </button>
-                <button className="pv-btn pv-btn-rose" onClick={salvar}>
-                  <Save size={13} strokeWidth={1.5} /> salvar
-                </button>
+                <button className="pv-btn pv-btn-outline" onClick={cancelar}><X size={13} strokeWidth={1.5} /> cancelar</button>
+                <button className="pv-btn pv-btn-rose" onClick={salvar}><Save size={13} strokeWidth={1.5} /> salvar</button>
               </>
             ) : (
               <>
-                <button className="pv-btn pv-btn-ghost" onClick={() => setEditando(true)}>
-                  <Edit3 size={13} strokeWidth={1.5} /> editar
-                </button>
-                <button className="pv-btn pv-btn-ghost" onClick={() => window.print()}>
-                  <Printer size={13} strokeWidth={1.5} /> imprimir
-                </button>
+                <button className="pv-btn pv-btn-ghost" onClick={() => setEditando(true)}><Edit3 size={13} strokeWidth={1.5} /> editar</button>
+                <button className="pv-btn pv-btn-ghost" onClick={() => window.print()}><Printer size={13} strokeWidth={1.5} /> imprimir</button>
                 <button className="pv-btn pv-btn-dark" onClick={exportarPDF} disabled={exportando}>
-                  <Download size={13} strokeWidth={1.5} />
-                  {exportando ? "gerando..." : "exportar PDF"}
+                  <Download size={13} strokeWidth={1.5} />{exportando ? "gerando..." : "exportar PDF"}
                 </button>
               </>
             )}
@@ -244,37 +273,28 @@ export default function ProntuarioViewPage() {
         </div>
       </div>
 
-      {/* ── DOCUMENTO ── */}
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "48px 28px 80px" }}>
+      {/* DOCUMENTO */}
+      <div style={{ maxWidth: 920, margin: "0 auto", padding: "48px 28px 80px" }}>
         <div
-          ref={docRef}
           className="pv-doc"
-          style={{
-            background: "var(--pv-doc)",
-            borderRadius: 20,
-            border: "1.5px solid var(--pv-border)",
-            boxShadow: "0 8px 48px rgba(107,76,59,0.08)",
-            overflow: "hidden",
-            opacity: show ? 1 : 0,
-            transform: show ? "translateY(0)" : "translateY(20px)",
-            transition: "opacity 0.6s ease, transform 0.6s ease",
-          }}
+          style={{ background: "var(--pv-doc)", borderRadius: 20, border: "1.5px solid var(--pv-border)", boxShadow: "0 8px 48px rgba(107,76,59,0.08)", overflow: "hidden", opacity: show ? 1 : 0, transform: show ? "translateY(0)" : "translateY(20px)", transition: "opacity 0.6s ease, transform 0.6s ease" }}
         >
-          {/* ── CAPA DO DOCUMENTO ── */}
+          {/* CAPA */}
           <div style={{ background: "#4A3328", padding: "52px 56px 44px", position: "relative", overflow: "hidden" }}>
-            {/* Orbs decorativos no header */}
             <div style={{ position: "absolute", top: -60, right: -60, width: 240, height: 240, borderRadius: "50%", background: "rgba(196,137,122,0.15)", filter: "blur(40px)" }} />
             <div style={{ position: "absolute", bottom: -40, left: 0, width: 180, height: 180, borderRadius: "50%", background: "rgba(232,196,187,0.08)", filter: "blur(30px)" }} />
-
             <div style={{ position: "relative" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 36 }}>
+              <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.65rem", letterSpacing: "0.26em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>
+                prontuário psicológico
+              </p>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
                 <div>
-                  <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.65rem", letterSpacing: "0.26em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>
-                    prontuário terapêutico
-                  </p>
-                  <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(2rem, 5vw, 3.2rem)", color: "#FAF9F7", lineHeight: 1.15, marginBottom: 0 }}>
+                  <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "clamp(2rem, 5vw, 3.2rem)", color: "#FAF9F7", lineHeight: 1.15 }}>
                     {nome}
                   </h1>
+                  <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: 10 }}>
+                    Letícia Bittencourt Reis — CRP 06/189562
+                  </p>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 24 }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#C4897A", marginLeft: "auto", marginBottom: 8 }} />
@@ -283,56 +303,81 @@ export default function ProntuarioViewPage() {
                   </p>
                 </div>
               </div>
-
-              {/* Chips de info */}
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <InfoChip label="Nome" valor={nome} />
-                {dados.idade && <InfoChip label="Idade" valor={`${dados.idade} anos`} />}
+                {dados.data_nascimento && <InfoChip label="Nascimento" valor={dados.data_nascimento} />}
+                {dados.modalidade && <InfoChip label="Modalidade" valor={dados.modalidade} />}
                 <InfoChip label="Status" valor="Completo" destaque />
               </div>
             </div>
           </div>
 
-          {/* ── CORPO DO DOCUMENTO ── */}
+          {/* CORPO */}
           <div style={{ padding: "52px 56px" }}>
 
-            {/* Perguntas */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              {PERGUNTAS.map((p, i) => {
-                const campo = p.id as keyof ProntuarioData;
-                const resposta = (editando && editForm ? editForm[campo] : dados[campo]) as string;
-                return (
-                  <QuestaoBlock
-                    key={p.id}
-                    numero={String(i + 1).padStart(2, "0")}
-                    pergunta={p.pergunta}
-                    resposta={resposta}
-                    editando={editando}
-                    onChange={v => setEditForm(f => f ? { ...f, [campo]: v } : f)}
-                    ultimo={false}
-                  />
-                );
-              })}
+            {/* Seção: Identificação */}
+            <Secao titulo="Identificação">
+              <GridCampos>
+                <CampoView label="Nome Completo / Nome Social" valor={ef.paciente_nome || ef.nome} editando={editando} onChange={setEF("paciente_nome")} />
+                <CampoView label="Data de Nascimento" valor={ef.data_nascimento} editando={editando} onChange={setEF("data_nascimento")} />
+                <CampoView label="Gênero / Identidade de Gênero" valor={ef.genero} editando={editando} onChange={setEF("genero")} />
+                <CampoView label="Estado Civil" valor={ef.estado_civil} editando={editando} onChange={setEF("estado_civil")} />
+              </GridCampos>
+            </Secao>
 
-              {/* Escrita livre */}
-              <QuestaoBlock
-                numero="✦"
-                pergunta="Escrita livre"
-                resposta={(editando && editForm ? editForm.escrita_livre : dados.escrita_livre) || ""}
-                editando={editando}
-                onChange={v => setEditForm(f => f ? { ...f, escrita_livre: v } : f)}
-                ultimo
-                rows={10}
-              />
-            </div>
+            {/* Seção: Contato e Localização */}
+            <Secao titulo="Contato e Localização">
+              <GridCampos>
+                <CampoView label="CPF" valor={ef.cpf} editando={editando} onChange={setEF("cpf")} />
+                <CampoView label="WhatsApp" valor={ef.whatsapp} editando={editando} onChange={setEF("whatsapp")} />
+                <CampoView label="E-mail" valor={ef.email} editando={editando} onChange={setEF("email")} />
+                <CampoView label="Cidade e Estado" valor={ef.cidade_estado} editando={editando} onChange={setEF("cidade_estado")} />
+              </GridCampos>
+              <div style={{ marginTop: 24 }}>
+                <CampoView label="Endereço" valor={ef.endereco} editando={editando} onChange={setEF("endereco")} />
+              </div>
+            </Secao>
 
-            {/* Rodapé do documento */}
+            {/* Seção: Perfil */}
+            <Secao titulo="Perfil">
+              <GridCampos>
+                <CampoView label="Profissão" valor={ef.profissao} editando={editando} onChange={setEF("profissao")} />
+                <CampoView label="Modalidade de Atendimento" valor={ef.modalidade} editando={editando} onChange={setEF("modalidade")} />
+              </GridCampos>
+            </Secao>
+
+            {/* Seção: Saúde */}
+            <Secao titulo="Saúde">
+              <CampoView label="Medicação Psiquiátrica" valor={ef.medicacao} editando={editando} onChange={setEF("medicacao")} />
+            </Secao>
+
+            {/* Seção: Motivo */}
+            <Secao titulo="Motivo da Consulta" ultima>
+              {editando ? (
+                <textarea
+                  className="pv-edit-area"
+                  value={ef.motivo || ""}
+                  onChange={e => setEF("motivo")(e.target.value)}
+                  rows={8}
+                />
+              ) : (
+                <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.96rem", color: "var(--pv-fg)", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>
+                  {ef.motivo?.trim() || (
+                    <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", color: "var(--pv-pale)" }}>
+                      não informado
+                    </span>
+                  )}
+                </p>
+              )}
+            </Secao>
+
+            {/* Rodapé */}
             <div style={{ marginTop: 64, paddingTop: 24, borderTop: "1px solid var(--pv-border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "0.78rem", color: "var(--pv-pale)" }}>
-                indicapsi — prontuário terapêutico digital
+                indicapsi — prontuário psicológico digital
               </p>
               <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.72rem", color: "var(--pv-pale)", letterSpacing: "0.1em" }}>
-                documento confidencial
+                Resolução CFP 001/2009 · documento confidencial
               </p>
             </div>
           </div>
@@ -347,50 +392,53 @@ export default function ProntuarioViewPage() {
 function InfoChip({ label, valor, destaque = false }: { label: string; valor: string; destaque?: boolean }) {
   return (
     <div style={{ padding: "6px 14px", borderRadius: 999, background: destaque ? "rgba(196,137,122,0.25)" : "rgba(255,255,255,0.07)", border: `1px solid ${destaque ? "rgba(196,137,122,0.4)" : "rgba(255,255,255,0.1)"}` }}>
-      <span style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.68rem", letterSpacing: "0.12em", textTransform: "uppercase", color: destaque ? "#C4897A" : "rgba(255,255,255,0.4)", marginRight: 6 }}>
-        {label}
-      </span>
-      <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontSize: "0.85rem", color: destaque ? "#E8C4BB" : "rgba(255,255,255,0.75)" }}>
-        {valor}
-      </span>
+      <span style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.68rem", letterSpacing: "0.12em", textTransform: "uppercase", color: destaque ? "#C4897A" : "rgba(255,255,255,0.4)", marginRight: 6 }}>{label}</span>
+      <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontSize: "0.85rem", color: destaque ? "#E8C4BB" : "rgba(255,255,255,0.75)" }}>{valor}</span>
     </div>
   );
 }
 
-function QuestaoBlock({ numero, pergunta, resposta, editando, onChange, ultimo, rows = 5 }: {
-  numero: string; pergunta: string; resposta: string;
-  editando: boolean; onChange: (v: string) => void;
-  ultimo: boolean; rows?: number;
-}) {
+function Secao({ titulo, children, ultima = false }: { titulo: string; children: React.ReactNode; ultima?: boolean }) {
   return (
-    <div style={{ paddingBottom: 44, marginBottom: 44, borderBottom: ultimo ? "none" : "1px solid var(--pv-border)" }}>
-      {/* Número + linha */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <span style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.72rem", color: "#C4897A", letterSpacing: "0.1em", minWidth: 20 }}>
-          {numero}
+    <div style={{ marginBottom: ultima ? 0 : 48, paddingBottom: ultima ? 0 : 48, borderBottom: ultima ? "none" : "1px solid var(--pv-border)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
+        <span style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.68rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#C4897A", whiteSpace: "nowrap" }}>
+          {titulo}
         </span>
         <div style={{ flex: 1, height: 1, background: "var(--pv-border)" }} />
       </div>
+      {children}
+    </div>
+  );
+}
 
-      {/* Pergunta */}
-      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", fontWeight: 400, fontSize: "1.1rem", color: "#C4897A", marginBottom: 16, lineHeight: 1.4 }}>
-        {pergunta}
-      </h3>
+function GridCampos({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "24px 32px" }}>
+      {children}
+    </div>
+  );
+}
 
-      {/* Resposta ou textarea */}
+function CampoView({ label, valor, editando, onChange }: {
+  label: string; valor?: string; editando: boolean; onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.66rem", letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--pv-pale)", marginBottom: 6 }}>
+        {label}
+      </p>
       {editando ? (
-        <textarea
-          className="pv-edit-area"
-          value={resposta}
+        <input
+          className="pv-edit"
+          type="text"
+          value={valor || ""}
           onChange={e => onChange(e.target.value)}
-          rows={rows}
         />
       ) : (
-        <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, fontSize: "0.96rem", color: "var(--pv-fg)", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>
-          {resposta?.trim() || (
-            <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", color: "var(--pv-pale)" }}>
-              não respondida
-            </span>
+        <p style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 400, fontSize: "0.95rem", color: "var(--pv-fg)", lineHeight: 1.5 }}>
+          {valor?.trim() || (
+            <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontStyle: "italic", color: "var(--pv-pale)", fontSize: "0.88rem" }}>—</span>
           )}
         </p>
       )}

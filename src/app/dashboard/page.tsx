@@ -10,10 +10,11 @@ interface ProntuarioItem {
   id: string;
   nome: string;
   paciente_nome?: string;
-  idade: string;
+  data_nascimento?: string;
+  profissao?: string;
   criado_em: string;
   status: string;
-  motivo: string;
+  motivo?: string;
 }
 
 function getNome(p: ProntuarioItem) {
@@ -59,7 +60,8 @@ export default function DashboardPage() {
         if (!remoto?.length) return;
         const parsed: ProntuarioItem[] = remoto.map(r => ({
           id: r.id, nome: r.paciente_nome ?? "", paciente_nome: r.paciente_nome,
-          idade: r.idade ?? "", criado_em: r.criado_em ?? new Date().toISOString(),
+          data_nascimento: r.data_nascimento, profissao: r.profissao,
+          criado_em: r.criado_em ?? new Date().toISOString(),
           status: r.status ?? "completo", motivo: r.motivo ?? "",
         }));
         const ids = new Set(parsed.map(r => r.id));
@@ -331,12 +333,12 @@ export default function DashboardPage() {
                           {nome}
                         </p>
                         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          {p.idade && (
-                            <span style={{ fontSize: "0.75rem", color: "var(--dash-muted)", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300 }}>
-                              {p.idade} anos
+                          {p.profissao && (
+                            <span style={{ fontSize: "0.75rem", color: "var(--dash-muted)", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {p.profissao}
                             </span>
                           )}
-                          {p.idade && <span style={{ width: 3, height: 3, borderRadius: "50%", background: "var(--dash-border)", display: "inline-block" }} />}
+                          {p.profissao && <span style={{ width: 3, height: 3, borderRadius: "50%", background: "var(--dash-border)", display: "inline-block", flexShrink: 0 }} />}
                           <span style={{ fontSize: "0.75rem", color: "var(--dash-muted)", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 300 }}>
                             {formatData(p.criado_em)} · {formatHora(p.criado_em)}
                           </span>

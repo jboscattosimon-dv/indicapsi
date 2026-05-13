@@ -8,15 +8,18 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 export interface ProntuarioRow {
   id: string;
   paciente_nome: string;
-  idade?: string;
+  data_nascimento?: string;
+  genero?: string;
+  estado_civil?: string;
+  cpf?: string;
+  endereco?: string;
+  cidade_estado?: string;
+  modalidade?: string;
+  whatsapp?: string;
+  email?: string;
+  profissao?: string;
+  medicacao?: string;
   motivo?: string;
-  momento_perdida?: string;
-  relacao_consigo?: string;
-  vive_outros?: string;
-  ocupa_mente?: string;
-  como_corpo?: string;
-  recuperar?: string;
-  escrita_livre?: string;
   status?: string;
   criado_em?: string;
   atualizado_em?: string;
@@ -47,15 +50,18 @@ export async function salvarProntuario(prontuario: ProntuarioRow) {
     .upsert({
       id:               prontuario.id,
       paciente_nome:    prontuario.paciente_nome,
-      idade:            prontuario.idade,
+      data_nascimento:  prontuario.data_nascimento,
+      genero:           prontuario.genero,
+      estado_civil:     prontuario.estado_civil,
+      cpf:              prontuario.cpf,
+      endereco:         prontuario.endereco,
+      cidade_estado:    prontuario.cidade_estado,
+      modalidade:       prontuario.modalidade,
+      whatsapp:         prontuario.whatsapp,
+      email:            prontuario.email,
+      profissao:        prontuario.profissao,
+      medicacao:        prontuario.medicacao,
       motivo:           prontuario.motivo,
-      momento_perdida:  prontuario.momento_perdida,
-      relacao_consigo:  prontuario.relacao_consigo,
-      vive_outros:      prontuario.vive_outros,
-      ocupa_mente:      prontuario.ocupa_mente,
-      como_corpo:       prontuario.como_corpo,
-      recuperar:        prontuario.recuperar,
-      escrita_livre:    prontuario.escrita_livre,
       status:           prontuario.status ?? "completo",
     })
     .select()
